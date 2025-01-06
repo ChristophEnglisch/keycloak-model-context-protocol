@@ -1,5 +1,6 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import KcAdminClient from '@keycloak/keycloak-admin-client';
 import { z } from 'zod';
 
@@ -40,7 +41,7 @@ const ListUsersSchema = z.object({
 });
 
 // List available tools
-server.setRequestHandler("tools/list", async () => {
+server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
@@ -95,7 +96,7 @@ server.setRequestHandler("tools/list", async () => {
 });
 
 // Handle tool calls
-server.setRequestHandler("tools/call", async (request) => {
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
   // Authenticate before each request
   await kcAdminClient.auth({
     username: process.env.KEYCLOAK_ADMIN || 'admin',

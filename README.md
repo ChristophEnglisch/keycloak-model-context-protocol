@@ -76,3 +76,29 @@ Lists all users in a specified realm.
 ```bash
 npm run watch
 ```
+
+## Deployment
+
+### NPM Package
+
+This project is set up for automated deployment to NPM via GitHub Actions. When a new release is published on GitHub:
+
+1. The workflow automatically builds the package
+2. Tests are run
+3. The package is published to NPM if all checks pass
+
+#### Setup Requirements
+
+1. Create NPM account and get access token
+2. Add NPM_TOKEN secret to GitHub repository
+   - Go to repository Settings > Secrets
+   - Add new secret named `NPM_TOKEN`
+   - Paste your NPM access token as the value
+
+### Using the Package
+
+After deployment, install globally:
+
+```bash
+npm install -g keycloak-model-context-protocol
+```
