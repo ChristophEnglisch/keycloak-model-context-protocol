@@ -11,22 +11,50 @@ A Model Context Protocol server for Keycloak administration, providing tools to 
 
 ## Installation
 
-### Prerequisites
+### Via NPM (Recommended)
 
-- Node.js 18 or higher
-- Running Keycloak instance
+The server is available as an NPM package:
+```bash
+# Direct usage with npx
+npx -y keycloak-model-context-protocol
 
-### Setup
+# Or global installation
+npm install -g keycloak-model-context-protocol
+```
+
+### Local Development Setup
+
+If you want to develop or modify the server:
 
 ```bash
+git clone <repository-url>
+cd keycloak-model-context-protocol
 npm install
 npm run build
 ```
 
-### Configuration
+## Configuration
 
+### Using NPM Package (Recommended)
 Configure the server in your Claude Desktop configuration file:
 
+```json
+{
+  "mcpServers": {
+    "keycloak": {
+      "command": "npx",
+      "args": ["-y", "keycloak-model-context-protocol"],
+      "env": {
+        "KEYCLOAK_URL": "http://localhost:8080",
+        "KEYCLOAK_ADMIN": "admin",
+        "KEYCLOAK_ADMIN_PASSWORD": "admin"
+      }
+    }
+  }
+}
+```
+
+### For Local Development
 ```json
 {
   "mcpServers": {
@@ -77,17 +105,21 @@ Lists all users in a specified realm.
 npm run watch
 ```
 
+## Testing
+
+To test the server using MCP Inspector:
+
+```bash
+npx -y @modelcontextprotocol/inspector npx -y keycloak-model-context-protocol
+```
+
 ## Deployment
 
 ### NPM Package
 
-This project is set up for automated deployment to NPM via GitHub Actions. When a new release is published on GitHub:
+This project is automatically published to [NPM](https://www.npmjs.com/package/keycloak-model-context-protocol) via GitHub Actions when a new release is published on GitHub.
 
-1. The workflow automatically builds the package
-2. Tests are run
-3. The package is published to NPM if all checks pass
-
-#### Setup Requirements
+#### Setup Requirements for Deployment
 
 1. Create NPM account and get access token
 2. Add NPM_TOKEN secret to GitHub repository
@@ -95,10 +127,7 @@ This project is set up for automated deployment to NPM via GitHub Actions. When 
    - Add new secret named `NPM_TOKEN`
    - Paste your NPM access token as the value
 
-### Using the Package
+## Prerequisites
 
-After deployment, install globally:
-
-```bash
-npm install -g keycloak-model-context-protocol
-```
+- Node.js 18 or higher
+- Running Keycloak instance

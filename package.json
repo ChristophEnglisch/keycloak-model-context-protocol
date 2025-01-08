@@ -1,12 +1,12 @@
 {
   "name": "keycloak-model-context-protocol",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "MCP server for Keycloak administration",
   "license": "MIT",
   "author": "Christoph Englisch",
   "type": "module",
   "bin": {
-    "mcp-server-keycloak": "./dist/index.js"
+    "keycloak-model-context-protocol": "./dist/index.js"
   },
   "files": [
     "dist"
