@@ -1,5 +1,7 @@
 # Keycloak MCP Server
 
+[![smithery badge](https://smithery.ai/badge/keycloak-model-context-protocol)](https://smithery.ai/server/keycloak-model-context-protocol)
+
 A Model Context Protocol server for Keycloak administration, providing tools to manage users and realms.
 
 ## Features
@@ -10,6 +12,14 @@ A Model Context Protocol server for Keycloak administration, providing tools to 
 - List users in specific realms
 
 ## Installation
+
+### Installing via Smithery
+
+To install Keycloak for Claude Desktop automatically via [Smithery](https://smithery.ai/server/keycloak-model-context-protocol):
+
+```bash
+npx -y @smithery/cli install keycloak-model-context-protocol --client claude
+```
 
 ### Via NPM (Recommended)
 
