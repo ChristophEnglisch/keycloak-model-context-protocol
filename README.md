@@ -4,6 +4,10 @@
 
 A Model Context Protocol server for Keycloak administration, providing tools to manage users and realms.
 
+<a href="https://glama.ai/mcp/servers/ifddqujn9k">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/ifddqujn9k/badge" alt="Keycloak Server MCP server" />
+</a>
+
 ## Features
 
 - Create new users in specific realms
