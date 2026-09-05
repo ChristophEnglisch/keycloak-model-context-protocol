@@ -1,6 +1,6 @@
 # Keycloak MCP Server
 
-[![smithery badge](https://smithery.ai/badge/keycloak-model-context-protocol)](https://smithery.ai/server/keycloak-model-context-protocol)
+[![LightNow MCP capabilities](https://lightnow.ai/badge/io.github.christophenglisch/keycloak-model-context-protocol)](https://lightnow.ai/servers/io.github.christophenglisch/keycloak-model-context-protocol)
 
 A Model Context Protocol server for Keycloak administration, providing tools to manage users and realms.
 
