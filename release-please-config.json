@@ -1,0 +1,30 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "node",
+  "include-component-in-tag": false,
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": false,
+  "packages": {
+    ".": {
+      "package-name": "keycloak-model-context-protocol",
+      "release-as": "1.0.0",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        { "type": "json", "path": "server.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "server.json", "jsonpath": "$.packages[0].version" }
+      ]
+    }
+  },
+  "changelog-sections": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "perf", "section": "Performance Improvements" },
+    { "type": "docs", "section": "Documentation" },
+    { "type": "deps", "section": "Dependencies" },
+    { "type": "chore", "section": "Miscellaneous", "hidden": true },
+    { "type": "refactor", "section": "Refactoring", "hidden": true },
+    { "type": "test", "section": "Tests", "hidden": true },
+    { "type": "ci", "section": "CI", "hidden": true },
+    { "type": "build", "section": "Build", "hidden": true }
+  ]
+}
