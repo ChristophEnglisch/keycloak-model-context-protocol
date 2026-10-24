@@ -213,7 +213,7 @@ Threat model, hardening checklist and how to report a vulnerability: [docs/secur
 
 ## Upgrade from 0.x
 
-Version 1.0 changes the defaults: credentials are required (no `admin`/`admin` fallback), destructive tools ask for confirmation, and the tools were renamed to `<domain>_<verb>` (for example `create-user` became `user_create`, `delete-user` became `user_delete`). The old `KEYCLOAK_ADMIN` and `KEYCLOAK_ADMIN_PASSWORD` variables still work but are deprecated. See the [migration guide](CHANGELOG.md#migration).
+Version 1.0 changes the defaults: credentials are required (no `admin`/`admin` fallback), destructive tools ask for confirmation, and the tools were renamed to `<domain>_<verb>` (for example `create-user` became `user_create`, `delete-user` became `user_delete`). The old `KEYCLOAK_ADMIN` and `KEYCLOAK_ADMIN_PASSWORD` variables still work but are deprecated. See the [migration guide](docs/migration-1.0.md).
 
 ## Contributing and license
 

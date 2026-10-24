@@ -105,7 +105,7 @@ Tokens are cached and refreshed shortly before they expire. On an HTTP 401 from 
 | `KEYCLOAK_ADMIN` | `KEYCLOAK_USERNAME` | Still read when `KEYCLOAK_USERNAME` is unset; logs a deprecation warning on stderr |
 | `KEYCLOAK_ADMIN_PASSWORD` | `KEYCLOAK_PASSWORD` | Still read when `KEYCLOAK_PASSWORD` is unset; logs a deprecation warning |
 
-If both the new and the legacy variable are set, the new one wins and no warning is logged. The aliases only cover the variable names. **The 0.x fallback defaults are gone:** `KEYCLOAK_URL` is now required (it used to default to `http://localhost:8080`), and there is no default user or password (`admin`/`admin`). See the [migration notes](../CHANGELOG.md#migration).
+If both the new and the legacy variable are set, the new one wins and no warning is logged. The aliases only cover the variable names. **The 0.x fallback defaults are gone:** `KEYCLOAK_URL` is now required (it used to default to `http://localhost:8080`), and there is no default user or password (`admin`/`admin`). See the [migration notes](migration-1.0.md).
 
 ## Toolsets
 
