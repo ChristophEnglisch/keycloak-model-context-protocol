@@ -2,7 +2,7 @@
 
 Willkommen in der Dokumentation des MCP-Servers `keycloak-model-context-protocol` (Version 1.0). Die Nutzer-Doku ist auf Englisch, damit sie zum Paket, zur README und zu den Tool-Beschreibungen passt. Dieser Index ist auf Deutsch.
 
-Eine Kurzübersicht und die Schnellinstallation stehen in der [README](../README.md). Änderungen und die Migration von 0.0.x stehen im [CHANGELOG](../CHANGELOG.md#migration).
+Eine Kurzübersicht und die Schnellinstallation stehen in der [README](../README.md). Änderungen und die Migration von 0.0.x stehen im [CHANGELOG](migration-1.0.md).
 
 ## Nutzer- und Projekt-Doku
 
@@ -15,6 +15,7 @@ Eine Kurzübersicht und die Schnellinstallation stehen in der [README](../README
 | [security.md](security.md) | Sicherheitsmodell, Guard-Kette, Least Privilege, Audit-Log, Status der Analysebefunde SEC-01 bis SEC-15 |
 | [troubleshooting.md](troubleshooting.md) | Symptome, Ursachen und Lösungen mit den wörtlichen Fehlermeldungen |
 | [architecture.md](architecture.md) | Module, Request-Lebenszyklus, Designentscheidungen, neues Tool hinzufügen, Teststrategie |
+| [migration-1.0.md](migration-1.0.md) | Upgrade von 0.0.x auf 1.0: Highlights, Breaking Changes, Tabellen alt → neu |
 | [release-process.md](release-process.md) | Release mit release-please, npm Trusted Publishing und MCP Registry |
 
 Weitere Dateien im Projekt-Root: [SECURITY.md](../SECURITY.md) (Schwachstellen melden), [CONTRIBUTING.md](../CONTRIBUTING.md), [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md).

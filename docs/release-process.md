@@ -46,6 +46,7 @@ Hinweise:
    - Environment name: `release`
 2. **GitHub-Environment `release` anlegen** (*Settings → Environments*). Empfohlen: Required reviewers (der Owner), Deployment branches/tags auf `main` bzw. `v*` beschränken. Beide Publish-Jobs verwenden dieses Environment, jeder Publish wartet also auf eine Freigabe.
 3. **Workflow-Berechtigung für release-please:** *Settings → Actions → General → Workflow permissions* auf „Read and write permissions“ setzen und „Allow GitHub Actions to create and approve pull requests“ aktivieren. Ohne das kann release-please keinen Release-PR anlegen.
+   Optional: ein Secret `RELEASE_PLEASE_TOKEN` (Fine-grained PAT oder GitHub-App-Token mit *Contents* und *Pull requests: write* für dieses Repo). Der Workflow nutzt es automatisch statt des `GITHUB_TOKEN`. Vorteil: Auf Release-PRs läuft dann auch `ci.yml`, was mit dem `GITHUB_TOKEN` nicht passiert.
 4. **Token-Publishing sperren.** Erst nachdem der erste Trusted-Publishing-Release (1.0.0) erfolgreich war: npmjs.com → Paket → *Settings → Publishing access* → „Require two-factor authentication and disallow tokens“. Danach alle bestehenden Automation-Tokens des Pakets widerrufen.
 5. **Altes Secret löschen:** GitHub → *Settings → Secrets and variables → Actions* → `NPM_TOKEN` entfernen.
 6. **Private Vulnerability Reporting aktivieren:** *Settings → Code security → Private vulnerability reporting* einschalten (Voraussetzung für den Meldeweg in `SECURITY.md`).
@@ -83,6 +84,10 @@ Hinweis: `chore:`/`ci:`-Commits allein lösen keinen Release-PR aus. Abhängigke
 
 ## Fehlerbehebung
 
+- **`release-please failed: GitHub Actions is not permitted to create or approve pull requests`:** Einrichtung, Schritt 3 fehlt. release-please hat den Branch `release-please--branches--main--…` dann schon angelegt, nur der PR fehlt. Nach dem Umstellen der Einstellung unter *Actions → Release* den fehlgeschlagenen Lauf mit *Re-run failed jobs* neu starten (oder den nächsten Push auf `main` abwarten). Der vorhandene Branch wird wiederverwendet.
+- **`commit could not be parsed` im Log:** betrifft Merge-Commits wie „Merge pull request #12 …“ und alte Commits ohne Conventional-Commit-Titel. Das ist harmlos, sie fehlen nur im Changelog. Empfehlung: unter *Settings → General → Pull Requests* nur Squash-Merge erlauben und als Standard-Commit-Message den PR-Titel verwenden.
+- **Breaking-Change-Text im Changelog abgeschnitten:** Zeilen im Commit-Body, die mit `wort:` beginnen (z. B. `confirm: true`), hält der Parser für Git-Trailer und beendet dort den Text. Korrektur ohne neuen Commit: In die Beschreibung des gemergten PRs einen Block `BEGIN_COMMIT_OVERRIDE` … `END_COMMIT_OVERRIDE` mit der korrigierten Commit-Message einfügen; release-please nutzt ihn beim nächsten Lauf.
+- **Lint schlägt nach dem Release-PR fehl:** `CHANGELOG.md`, `server.json` und `.release-please-manifest.json` schreibt release-please in eigenem Format. Sie sind deshalb in `biome.json` vom Formatter ausgenommen. Nicht wieder aufnehmen.
 - **Kein Release-PR erscheint:** Seit dem letzten Release gab es keine Commits vom Typ `feat`, `fix`, `perf`, `docs` oder `deps`, oder Workflow-Berechtigungen fehlen (Einrichtung, Schritt 3).
 - **`npm publish` meldet 404/E403 oder „Unable to authenticate“:** Der Trusted Publisher stimmt nicht exakt mit Repo, Workflow-Datei `release.yml` und Environment `release` überein (Einrichtung, Schritt 1). Der Workflow darf nicht umbenannt werden.
 - **npm-Version:** Trusted Publishing braucht npm ≥ 11.5.1. Node 24 liefert in aktuellen Patch-Releases npm 11.x mit. Der Workflow prüft die Version trotzdem und führt bei Bedarf `npm install -g npm@latest` aus.

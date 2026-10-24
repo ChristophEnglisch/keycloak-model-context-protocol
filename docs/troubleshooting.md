@@ -68,7 +68,7 @@ KEYCLOAK_URL=https://keycloak.example.com KEYCLOAK_CLIENT_ID=<id> KEYCLOAK_CLIEN
 
 The server logs `keycloak-model-context-protocol started` to stderr and then waits for MCP messages on stdin. Startup does not contact Keycloak; the first login happens on the first tool call, so a wrong URL or password shows up there, not at startup.
 
-If the log shows `KEYCLOAK_ADMIN is deprecated; use KEYCLOAK_USERNAME instead.` (or the same for `KEYCLOAK_ADMIN_PASSWORD`), rename the variable. See [Migration from 0.0.x](../CHANGELOG.md#migration).
+If the log shows `KEYCLOAK_ADMIN is deprecated; use KEYCLOAK_USERNAME instead.` (or the same for `KEYCLOAK_ADMIN_PASSWORD`), rename the variable. See [Migration from 0.0.x](migration-1.0.md).
 
 ## Authentication errors (401, invalid_grant)
 
