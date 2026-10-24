@@ -22,53 +22,13 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for **K
 
 Your MCP client starts the server as a local child process and talks to it over stdio. Every tool call passes the guards, then goes through a single gateway that owns the Keycloak login and caches the access token.
 
-```mermaid
-flowchart LR
-    subgraph Host["Your machine"]
-        Client["MCP client<br/>(Claude Desktop, Claude Code,<br/>VS Code, Cursor, ...)"]
-        subgraph Server["keycloak-model-context-protocol (Node.js)"]
-            Guards["Guards<br/>read-only, realm allowlist,<br/>master protection, confirmation"]
-            Toolsets["Toolsets, prompts, resources<br/>core, groups, roles, clients,<br/>sessions, events, security"]
-            Gateway["Gateway<br/>login and token cache"]
-            Guards --> Toolsets --> Gateway
-        end
-        Client <-->|"JSON-RPC over stdio"| Guards
-    end
-
-    subgraph KC["Keycloak"]
-        Token["Token endpoint"]
-        Admin["Admin REST API<br/>/admin/realms/..."]
-    end
-
-    Gateway -->|"client_credentials or password grant"| Token
-    Gateway -->|"Bearer token"| Admin
-```
+![Architecture: the MCP client talks JSON-RPC over stdio to the server, whose guards, toolsets and gateway call the Keycloak token endpoint and Admin REST API](https://raw.githubusercontent.com/ChristophEnglisch/keycloak-model-context-protocol/main/docs/diagrams/architecture.svg)
 
 ### What a destructive call looks like
 
 A destructive tool never acts on the first call. It returns a preview of what would happen and changes nothing. Only after you approve does the assistant repeat the call with `confirm: true`.
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User
-    participant LLM as MCP client / LLM
-    participant MCP as Keycloak MCP server
-    participant KC as Keycloak
-
-    User->>LLM: "Delete user bob from realm demo"
-    LLM->>MCP: user_delete (realm, userId)
-    MCP->>KC: GET user (for the preview)
-    KC-->>MCP: user data
-    MCP-->>LLM: isError, "Confirmation required. This would: permanently delete user bob ... Nothing was changed."
-    LLM->>User: "This will permanently delete bob. Proceed?"
-    User->>LLM: "Yes"
-    LLM->>MCP: user_delete (realm, userId, confirm: true)
-    MCP->>KC: DELETE user
-    KC-->>MCP: 204 No Content
-    MCP-->>LLM: deleted: true
-    LLM-->>User: "User bob was deleted."
-```
+![Sequence of a destructive call: the first user_delete call returns a preview and changes nothing, the repeated call with confirm: true deletes the user](https://raw.githubusercontent.com/ChristophEnglisch/keycloak-model-context-protocol/main/docs/diagrams/destructive-call.svg)
 
 ## Quick start
 

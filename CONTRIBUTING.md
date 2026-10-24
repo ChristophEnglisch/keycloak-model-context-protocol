@@ -53,6 +53,15 @@ We use [Conventional Commits](https://www.conventionalcommits.org/). PR titles m
 
 Implementation details are in the code and its existing tools; follow their patterns.
 
+## Diagrams
+
+npmjs.com does not render Mermaid, so the README embeds diagrams as SVG instead of Mermaid blocks. The sources live in `docs/diagrams/*.mmd`, the shared settings in `docs/diagrams/mermaid.config.json`.
+1. Edit or add a `.mmd` file.
+2. Run `npm run docs:diagrams`. It renders every changed source with mermaid-cli via `npx`; the first run downloads mermaid-cli and a headless Chrome.
+3. Commit the `.mmd` and the generated `.svg` together. Embed a new diagram in the README with its absolute URL, `https://raw.githubusercontent.com/ChristophEnglisch/keycloak-model-context-protocol/main/docs/diagrams/<name>.svg`; relative links break on npm.
+
+Do not rename or delete an SVG the README already embeds: the README of every published version points to it on `main`. The `Diagrams` CI job (`npm run docs:diagrams:check`) fails if an SVG is missing or older than its source, or if the README contains a Mermaid block or a relative diagram link. Mermaid blocks in `docs/*.md` are fine, those files are only read on GitHub.
+
 ## Releases
 
 Releases are cut by [release-please](https://github.com/googleapis/release-please) from the Conventional Commit titles merged into `main`. It opens a release pull request with the changelog and version bump; merging it tags the release, publishes to npm with [Trusted Publishing](https://docs.npmjs.com/trusted-publishers) and a provenance attestation, and updates the entry in the [MCP Registry](https://registry.modelcontextprotocol.io). Contributors do not need to do anything beyond using the right commit title. A faulty release is deprecated on npm and followed by a patch release, never unpublished.
