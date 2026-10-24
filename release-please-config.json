@@ -7,7 +7,6 @@
   "packages": {
     ".": {
       "package-name": "keycloak-model-context-protocol",
-      "release-as": "1.0.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         { "type": "json", "path": "server.json", "jsonpath": "$.version" },

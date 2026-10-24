@@ -70,7 +70,7 @@ Hinweise:
 
 ## 1.0.0 schneiden
 
-Der erste Release soll exakt `1.0.0` heißen, unabhängig von den bisherigen Commits. Dafür steht in `release-please-config.json` unter `packages["."]` der Schlüssel `"release-as": "1.0.0"`.
+Der erste Release soll exakt `1.0.0` heißen, unabhängig von den bisherigen Commits. Dafür stand in `release-please-config.json` unter `packages["."]` der Schlüssel `"release-as": "1.0.0"`. Tag und GitHub Release `v1.0.0` existieren inzwischen, der Schlüssel ist wieder entfernt.
 
 1. Sicherstellen, dass alle Änderungen für 1.0 auf `main` gemergt sind und `ci.yml` grün ist (die Commits müssen Conventional-Commit-Titel haben, sonst fehlen sie im Changelog).
 2. Warten, bis release-please den PR „chore(main): release 1.0.0“ anlegt. Changelog, `package.json` und `server.json` prüfen.
@@ -107,6 +107,6 @@ Hinweis: `chore:`/`ci:`-Commits allein lösen keinen Release-PR aus. Abhängigke
 - **Breaking-Change-Text im Changelog abgeschnitten:** Zeilen im Commit-Body, die mit `wort:` beginnen (z. B. `confirm: true`), hält der Parser für Git-Trailer und beendet dort den Text. Korrektur ohne neuen Commit: In die Beschreibung des gemergten PRs einen Block `BEGIN_COMMIT_OVERRIDE` … `END_COMMIT_OVERRIDE` mit der korrigierten Commit-Message einfügen; release-please nutzt ihn beim nächsten Lauf.
 - **Lint schlägt nach dem Release-PR fehl:** `CHANGELOG.md`, `server.json` und `.release-please-manifest.json` schreibt release-please in eigenem Format. Sie sind deshalb in `biome.json` vom Formatter ausgenommen. Nicht wieder aufnehmen.
 - **Kein Release-PR erscheint:** Seit dem letzten Release gab es keine Commits vom Typ `feat`, `fix`, `perf`, `docs` oder `deps`, oder Workflow-Berechtigungen fehlen (Einrichtung, Schritt 3).
-- **`npm publish` meldet 404/E403 oder „Unable to authenticate“:** Der Trusted Publisher stimmt nicht exakt mit Repo, Workflow-Datei `release.yml` und Environment `release` überein (Einrichtung, Schritt 1). Der Workflow darf nicht umbenannt werden.
+- **`npm publish` meldet 404/E403 oder „Unable to authenticate“:** Der Trusted Publisher stimmt nicht exakt mit Repo, Workflow-Datei `release.yml` und Environment `release` überein (Einrichtung, Schritt 1). Der Workflow darf nicht umbenannt werden. npm verschluckt den fehlgeschlagenen OIDC-Austausch und veröffentlicht dann ohne Anmeldung, daher die irreführende 404. Den eigentlichen Grund zeigt das Job-Log in der Zeile `npm verbose oidc Failed token exchange request with body message: …`. Tag und GitHub Release bleiben bestehen. Zum erneuten Veröffentlichen *Actions → Release → Run workflow* auf `main` starten und den Tag angeben (z. B. `v1.0.0`). Ein „Re-run“ des alten Laufs nutzt dagegen den Workflow-Stand des Tags, also ohne spätere Korrekturen am Workflow.
 - **npm-Version:** Trusted Publishing braucht npm ≥ 11.5.1. Node 24 liefert in aktuellen Patch-Releases npm 11.x mit. Der Workflow prüft die Version trotzdem und führt bei Bedarf `npm install -g npm@latest` aus.
 - **Fehlerhaftes Release:** Nie `npm unpublish`. Stattdessen `npm deprecate keycloak-model-context-protocol@X.Y.Z "Grund"` und einen `fix:`-Patch-Release nachschieben.
