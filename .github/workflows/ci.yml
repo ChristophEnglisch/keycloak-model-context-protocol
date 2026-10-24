@@ -3,6 +3,7 @@ name: CI
 # Jobs run only when files they depend on change (see the "changes" job).
 # A docs-only PR therefore runs just "changes" and "CI result". Unknown paths,
 # changes to this file, the weekly schedule and manual runs run everything.
+# The Keycloak compatibility probes (integration-compat) never run on pull requests.
 # "CI result" aggregates all jobs and is the one check to mark as required.
 
 on:
@@ -154,7 +155,6 @@ jobs:
     # Docker is preinstalled on ubuntu-latest, so testcontainers works without extra setup.
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    continue-on-error: ${{ matrix.experimental || false }}
     strategy:
       fail-fast: false
       matrix:
@@ -163,13 +163,6 @@ jobs:
         include:
           - node: 22
             keycloak: "26.8"
-          # Compatibility probes: allowed to fail, they only document how far back the client works.
-          - node: 24
-            keycloak: "25.0"
-            experimental: true
-          - node: 24
-            keycloak: "24.0"
-            experimental: true
     env:
       KEYCLOAK_VERSION: ${{ matrix.keycloak }}
     steps:
@@ -179,6 +172,33 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run test:integration
+
+  integration-compat:
+    name: Integration compat (Node 24, Keycloak ${{ matrix.keycloak }})
+    needs: [changes, lint-typecheck, unit]
+    # Compatibility probes: allowed to fail, they only document how far back the
+    # client works. Not run on pull requests; main, the weekly schedule and manual
+    # runs cover them.
+    if: ${{ !cancelled() && !failure() && github.event_name != 'pull_request' && needs.changes.outputs.integration == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        keycloak: ["25.0", "24.0"]
+    env:
+      KEYCLOAK_VERSION: ${{ matrix.keycloak }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run test:integration
@@ -223,6 +243,7 @@ jobs:
 
   ci-result:
     name: CI result
+    # integration-compat is left out on purpose: its probes may fail.
     needs: [changes, lint-typecheck, unit, integration, build-smoke, audit]
     if: ${{ always() }}
     runs-on: ubuntu-latest
