@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.christophenglisch/keycloak-model-context-protocol",
+  "name": "io.github.ChristophEnglisch/keycloak-model-context-protocol",
   "description": "Manage Keycloak users, groups, roles and realms through the Keycloak Admin REST API.",
   "repository": {
     "url": "https://github.com/ChristophEnglisch/keycloak-model-context-protocol",
