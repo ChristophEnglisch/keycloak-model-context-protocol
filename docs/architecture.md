@@ -1,6 +1,6 @@
 # Architecture
 
-This page explains how the server is built, how a request flows through it, why some decisions were made and how to extend it. It describes version 1.0. The reasoning behind the redesign is in the [analysis](analysis/02-architecture-and-dependencies.md); the security view is in [security](security.md).
+This page explains how the server is built, how a request flows through it, why some decisions were made and how to extend it. It describes version 1.0. The security view is in [security](security.md).
 
 ## Modules
 
@@ -114,7 +114,7 @@ Key properties:
 
 ### No `setConfig` on the admin client
 
-The admin client has a global `setConfig({ realmName })`. Version 0.0.2 used it to select the target realm, which also changed the realm used for the next login and let parallel calls act in the wrong realm ([SEC-02](analysis/01-security.md)). In 1.0 the client is configured once and the realm is always part of the call. The gateway interface makes this the only possible usage, and `tests/unit/realm-isolation.test.ts` guards it.
+The admin client has a global `setConfig({ realmName })`. Version 0.0.2 used it to select the target realm, which also changed the realm used for the next login and let parallel calls act in the wrong realm. In 1.0 the client is configured once and the realm is always part of the call. The gateway interface makes this the only possible usage, and `tests/unit/realm-isolation.test.ts` guards it.
 
 ### `confirm` parameter instead of elicitation
 
@@ -122,7 +122,7 @@ Destructive tools take a `confirm` flag; without it they return a preview and ch
 
 - Elicitation is deprecated in protocol version 2026-07-28, and many clients do not implement it yet.
 - A plain parameter works with every client and every transport, can be tested without a client simulator and gives the model a clear recovery path (ask the user, call again).
-- The honest limitation: `confirm` is a flag set by the model, not proof that a human clicked. Clients that gate calls on the `destructiveHint` annotation add that proof. See the SEC-06 row in [security](security.md).
+- The honest limitation: `confirm` is a flag set by the model, not proof that a human clicked. Clients that gate calls on the `destructiveHint` annotation add that proof. See [known limitations](security.md#known-limitations).
 
 ### Static toolsets
 
@@ -193,4 +193,4 @@ Which tools exist is decided once at startup from `KEYCLOAK_MCP_TOOLSETS` and `K
 | Integration | `npm run test:integration` | The same tools against a real Keycloak started by Testcontainers (or `IT_KEYCLOAK_URL` for a running instance, see `docker-compose.yml`). Auth flows, role matrix, realm isolation, stdio. Skipped without Docker. |
 | Smoke | `npm run test:smoke` | Packs the project like `npm publish`, installs the tarball in a temporary directory and drives the installed binary over stdio. |
 
-`npm run test:all` runs all three. The full pyramid and test case catalogue are described in the [testing analysis](analysis/03-testing-strategy.md).
+`npm run test:all` runs all three.

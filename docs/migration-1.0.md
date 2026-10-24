@@ -1,6 +1,6 @@
 # Upgrading to 1.0
 
-A complete rewrite of the server. Everything from the 0.0.x line that mattered is still there, but names, configuration and output format changed. Read [Migration from 0.0.x](#migration) before upgrading.
+A complete rewrite of the server. Everything from the 0.0.x line that mattered is still there, but names, configuration and output format changed. Read [Migration from 0.0.x](#migration-from-00x) before upgrading.
 
 ## Highlights
 

@@ -49,9 +49,13 @@ We use [Conventional Commits](https://www.conventionalcommits.org/). PR titles m
 2. Set annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) accurately; read-only mode and confirmation depend on them.
 3. Define an input schema and an `outputSchema` (zod) and return `structuredContent`.
 4. Add a unit test under `tests/unit/tools/`.
-5. Document the tool and its parameters in the README.
+5. Regenerate the tool reference with `npm run docs:tools` (`docs/tools-reference.md` is generated, do not edit it by hand). The steps in detail: [docs/architecture.md](docs/architecture.md).
 
 Implementation details are in the code and its existing tools; follow their patterns.
+
+## Releases
+
+Releases are cut by [release-please](https://github.com/googleapis/release-please) from the Conventional Commit titles merged into `main`. It opens a release pull request with the changelog and version bump; merging it tags the release, publishes to npm with [Trusted Publishing](https://docs.npmjs.com/trusted-publishers) and a provenance attestation, and updates the entry in the [MCP Registry](https://registry.modelcontextprotocol.io). Contributors do not need to do anything beyond using the right commit title. A faulty release is deprecated on npm and followed by a patch release, never unpublished.
 
 ## Versioning policy (Semver)
 

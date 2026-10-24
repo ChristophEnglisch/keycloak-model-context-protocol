@@ -16,3 +16,6 @@ coverage/
 .vscode/*
 !.vscode/extensions.json
 .DS_Store
+
+# Internal notes: analyses, findings, maintainer runbooks (never commit)
+unter-verschluss/
