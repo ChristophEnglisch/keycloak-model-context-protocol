@@ -2,7 +2,7 @@
   "name": "keycloak-model-context-protocol",
   "version": "1.0.0",
   "description": "MCP server for Keycloak administration",
-  "mcpName": "io.github.christophenglisch/keycloak-model-context-protocol",
+  "mcpName": "io.github.ChristophEnglisch/keycloak-model-context-protocol",
   "license": "MIT",
   "author": "Christoph Englisch",
   "type": "module",
