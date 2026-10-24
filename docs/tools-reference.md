@@ -6,7 +6,7 @@
 
 # Tools reference
 
-> Generated from the server definitions of version 1.0.0. Do not edit by hand.
+> Generated from the server definitions. Do not edit by hand.
 
 The server exposes 24 tools in 7 toolsets, 4 prompts and 4 resources. Which tools are registered depends on `KEYCLOAK_MCP_TOOLSETS` (default: `core,groups,roles`) and `KEYCLOAK_MCP_READ_ONLY` (hides every tool that is not read-only). See [configuration](configuration.md).
 
