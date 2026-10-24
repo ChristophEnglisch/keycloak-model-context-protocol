@@ -1,0 +1,191 @@
+{
+  "realm": "it-realm",
+  "displayName": "Integration Test Realm",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "bruteForceProtected": true,
+  "failureFactor": 3,
+  "permanentLockout": false,
+  "waitIncrementSeconds": 900,
+  "maxFailureWaitSeconds": 900,
+  "maxDeltaTimeSeconds": 43200,
+  "minimumQuickLoginWaitSeconds": 60,
+  "eventsEnabled": true,
+  "eventsExpiration": 0,
+  "enabledEventTypes": [
+    "LOGIN",
+    "LOGIN_ERROR",
+    "LOGOUT",
+    "REGISTER",
+    "UPDATE_PASSWORD",
+    "UPDATE_PROFILE"
+  ],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false,
+  "roles": {
+    "realm": [
+      {
+        "name": "viewer",
+        "description": "Read-only role"
+      },
+      {
+        "name": "editor",
+        "description": "Editor role"
+      },
+      {
+        "name": "composite-role",
+        "composite": true,
+        "composites": {
+          "realm": ["viewer"]
+        }
+      }
+    ]
+  },
+  "groups": [
+    {
+      "name": "engineering",
+      "path": "/engineering",
+      "subGroups": [
+        {
+          "name": "backend",
+          "path": "/engineering/backend"
+        }
+      ]
+    },
+    {
+      "name": "ops",
+      "path": "/ops"
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "it-app",
+      "name": "Integration App",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "it-app-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://localhost:3000/*"],
+      "webOrigins": ["http://localhost:3000"],
+      "defaultClientScopes": ["web-origins", "profile", "roles", "email"],
+      "optionalClientScopes": ["address", "phone", "offline_access"]
+    },
+    {
+      "clientId": "it-service",
+      "name": "Integration Service Account",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "it-service-secret",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "defaultClientScopes": ["roles"],
+      "optionalClientScopes": []
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "alice@it.example.test",
+      "firstName": "Alice",
+      "lastName": "Anderson",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "alice-pw",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["viewer"],
+      "groups": ["/engineering"]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "bob@it.example.test",
+      "firstName": "Bob",
+      "lastName": "Brown",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "bob-pw",
+          "temporary": false
+        }
+      ],
+      "groups": ["/engineering/backend"]
+    },
+    {
+      "username": "carol",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "carol@it.example.test",
+      "firstName": "Carol",
+      "lastName": "Clark",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "carol-pw",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["editor"],
+      "groups": ["/ops"]
+    },
+    {
+      "username": "locky",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "locky@it.example.test",
+      "firstName": "Lock",
+      "lastName": "Target",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "locky-pw",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "it-admin",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "it-admin@it.example.test",
+      "firstName": "Realm",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "it-admin-pw",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "realm-management": ["realm-admin"]
+      }
+    },
+    {
+      "username": "service-account-it-service",
+      "enabled": true,
+      "serviceAccountClientId": "it-service",
+      "clientRoles": {
+        "realm-management": [
+          "view-users",
+          "query-users",
+          "view-realm",
+          "view-clients",
+          "query-groups"
+        ]
+      }
+    }
+  ]
+}

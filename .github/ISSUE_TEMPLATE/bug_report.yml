@@ -1,0 +1,58 @@
+name: Bug report
+description: Something does not work as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include secrets, tokens or real user data. For security issues use the private reporting link instead.
+  - type: input
+    id: version
+    attributes:
+      label: Server version
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: keycloak
+    attributes:
+      label: Keycloak version
+      placeholder: "26.x"
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node.js version and OS
+      placeholder: "22.x, macOS"
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      placeholder: "Claude Desktop, Cursor, ..."
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration (without secrets)
+      description: Relevant KEYCLOAK_* variables with values redacted.
+      render: shell
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs. actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: stderr output, ideally with KEYCLOAK_MCP_LOG_LEVEL=debug. Remove secrets.
+      render: text

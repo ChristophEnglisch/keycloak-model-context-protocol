@@ -1,10 +1,31 @@
 {
   "name": "keycloak-model-context-protocol",
-  "version": "0.0.2",
+  "version": "1.0.0",
   "description": "MCP server for Keycloak administration",
+  "mcpName": "io.github.christophenglisch/keycloak-model-context-protocol",
   "license": "MIT",
   "author": "Christoph Englisch",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ChristophEnglisch/keycloak-model-context-protocol.git"
+  },
+  "homepage": "https://github.com/ChristophEnglisch/keycloak-model-context-protocol#readme",
+  "bugs": {
+    "url": "https://github.com/ChristophEnglisch/keycloak-model-context-protocol/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "keycloak",
+    "iam",
+    "identity",
+    "admin",
+    "ai"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "bin": {
     "keycloak-model-context-protocol": "./dist/index.js"
   },
@@ -12,18 +33,32 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc && shx chmod +x dist/*.js",
-    "prepare": "npm run build",
-    "watch": "tsc --watch"
+    "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').chmodSync('dist/index.js', 0o755)\"",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "vitest run tests/unit",
+    "test:watch": "vitest tests/unit",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "prepublishOnly": "npm run clean && npm run build && npm test",
+    "test:smoke": "npm run build && node tests/smoke/pack-smoke.mjs",
+    "test:all": "npm test && npm run test:integration && npm run test:smoke",
+    "docs:tools": "npm run build && node scripts/generate-tools-reference.mjs",
+    "docs:check": "npm run build && node scripts/generate-tools-reference.mjs --check"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "0.5.0",
-    "@keycloak/keycloak-admin-client": "^22.0.5",
-    "zod": "^3.22.4"
+    "@keycloak/keycloak-admin-client": "^26.8.1",
+    "@modelcontextprotocol/server": "^2.4.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/node": "^22",
-    "shx": "^0.3.4",
-    "typescript": "^5.3.3"
+    "@biomejs/biome": "^2.6.2",
+    "@modelcontextprotocol/client": "^2.4.0",
+    "@types/node": "^22.20.5",
+    "@vitest/coverage-v8": "^5.0.5",
+    "testcontainers": "^12.2.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
   }
 }

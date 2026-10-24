@@ -1,3 +1,18 @@
 .idea/
 node_modules/
 dist/
+
+# Dependencies and build output
+coverage/
+.vitest/
+*.tgz
+
+# Environment files (keep the example)
+.env
+.env.*
+!.env.example
+
+# Editors and OS
+.vscode/*
+!.vscode/extensions.json
+.DS_Store

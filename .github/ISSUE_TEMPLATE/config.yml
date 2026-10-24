@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/ChristophEnglisch/keycloak-model-context-protocol/security/advisories/new
+    about: Please report security issues privately via GitHub Private Vulnerability Reporting, not as a public issue.

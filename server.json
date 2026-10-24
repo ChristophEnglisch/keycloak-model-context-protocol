@@ -1,0 +1,115 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.christophenglisch/keycloak-model-context-protocol",
+  "description": "Manage Keycloak users, groups, roles and realms through the Keycloak Admin REST API.",
+  "repository": {
+    "url": "https://github.com/ChristophEnglisch/keycloak-model-context-protocol",
+    "source": "github"
+  },
+  "version": "1.0.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "keycloak-model-context-protocol",
+      "version": "1.0.0",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "KEYCLOAK_URL",
+          "description": "Base URL of the Keycloak server, e.g. https://keycloak.example.com",
+          "isRequired": true,
+          "format": "string"
+        },
+        {
+          "name": "KEYCLOAK_AUTH_REALM",
+          "description": "Realm used to obtain the admin token",
+          "isRequired": false,
+          "format": "string",
+          "default": "master"
+        },
+        {
+          "name": "KEYCLOAK_CLIENT_ID",
+          "description": "Client ID used for login (default admin-cli for the password grant, required for client_credentials)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "KEYCLOAK_CLIENT_SECRET",
+          "description": "Client secret for the client_credentials grant (recommended: a dedicated service account)",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "KEYCLOAK_USERNAME",
+          "description": "Username for the password grant (alternative to client credentials)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "KEYCLOAK_PASSWORD",
+          "description": "Password for the password grant",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "KEYCLOAK_GRANT_TYPE",
+          "description": "Grant type; auto-detected if unset (client_credentials when a secret is set, else password)",
+          "isRequired": false,
+          "format": "string",
+          "choices": ["client_credentials", "password"]
+        },
+        {
+          "name": "KEYCLOAK_MCP_READ_ONLY",
+          "description": "If true, only read-only tools are registered",
+          "isRequired": false,
+          "format": "boolean",
+          "default": "false"
+        },
+        {
+          "name": "KEYCLOAK_MCP_REALMS",
+          "description": "Comma-separated allowlist of target realms; empty means all realms",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "KEYCLOAK_MCP_ALLOW_MASTER_WRITE",
+          "description": "If true, write tools may modify the master realm",
+          "isRequired": false,
+          "format": "boolean",
+          "default": "false"
+        },
+        {
+          "name": "KEYCLOAK_MCP_TOOLSETS",
+          "description": "Comma-separated enabled toolsets (core, groups, roles, clients, sessions, events, security) or all",
+          "isRequired": false,
+          "format": "string",
+          "default": "core,groups,roles"
+        },
+        {
+          "name": "KEYCLOAK_MCP_REQUIRE_CONFIRMATION",
+          "description": "If true, destructive tools require confirm=true",
+          "isRequired": false,
+          "format": "boolean",
+          "default": "true"
+        },
+        {
+          "name": "KEYCLOAK_MCP_TIMEOUT_MS",
+          "description": "HTTP timeout for Keycloak requests in milliseconds",
+          "isRequired": false,
+          "format": "number",
+          "default": "30000"
+        },
+        {
+          "name": "KEYCLOAK_MCP_LOG_LEVEL",
+          "description": "Log level written to stderr",
+          "isRequired": false,
+          "format": "string",
+          "default": "info",
+          "choices": ["debug", "info", "warn", "error"]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "realm": "it-realm-b",
+  "displayName": "Integration Test Realm B",
+  "enabled": true,
+  "sslRequired": "none",
+  "eventsEnabled": true,
+  "adminEventsEnabled": true,
+  "groups": [
+    {
+      "name": "team-b",
+      "path": "/team-b"
+    }
+  ],
+  "users": [
+    {
+      "username": "zed",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "zed@it.example.test",
+      "firstName": "Zed",
+      "lastName": "Zimmer",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "zed-pw",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "yara",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "yara@it.example.test",
+      "firstName": "Yara",
+      "lastName": "Young",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "yara-pw",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

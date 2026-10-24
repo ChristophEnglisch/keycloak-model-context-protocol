@@ -1,0 +1,48 @@
+# Local development Keycloak with the integration-test realms pre-imported.
+# No .env file needed; everything is defined here (throw-away, dev-only credentials).
+#
+#   docker compose up -d                      # start (first start imports the realms, ~30 s)
+#   docker compose logs -f keycloak           # follow logs
+#   docker compose down                       # stop; data is not persisted, the next start is clean
+#
+# Admin console:  http://localhost:8080   (admin / admin)
+# Realms:         it-realm (users alice/bob/carol, groups, roles, clients it-app + it-service),
+#                 it-realm-b (users zed/yara) - see tests/integration/fixtures/*.json
+#
+# Try the MCP server against it (after `npm run build`):
+#   KEYCLOAK_URL=http://localhost:8080 KEYCLOAK_USERNAME=admin KEYCLOAK_PASSWORD=admin \
+#     node dist/index.js
+#
+# Run the integration tests against this instance instead of starting a container:
+#   IT_KEYCLOAK_URL=http://localhost:8080 npm run test:integration
+#   (they create and delete their own data but expect a fresh import, so `docker compose down` first
+#    if you changed things; override the login with IT_KEYCLOAK_ADMIN_USER / IT_KEYCLOAK_ADMIN_PASSWORD)
+#
+# Pick another Keycloak version: KEYCLOAK_VERSION=26.0 docker compose up -d
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION:-26.8}
+    command: ["start-dev", "--import-realm"]
+    ports:
+      - "8080:8080"
+    environment:
+      # Keycloak >= 26.1 reads KC_BOOTSTRAP_ADMIN_*; 24/25 read KEYCLOAK_ADMIN*.
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    volumes:
+      - ./tests/integration/fixtures/it-realm-realm.json:/opt/keycloak/data/import/it-realm-realm.json:ro
+      - ./tests/integration/fixtures/it-realm-b-realm.json:/opt/keycloak/data/import/it-realm-b-realm.json:ro
+    healthcheck:
+      # The image has no curl; use bash's /dev/tcp.
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/8080 &&
+          printf 'GET /realms/it-realm HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          head -n1 <&3 | grep -q ' 200 '
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
