@@ -133,6 +133,22 @@ jobs:
         with:
           ref: refs/tags/${{ env.TAG }}
           persist-credentials: false
+      # The MCP Registry validates the npm package version, but a fresh npm publish
+      # needs a moment to show up there (1.0.0 and 1.0.2 both failed with a 404).
+      - name: Wait until the version is visible on npm
+        run: |
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          for attempt in $(seq 1 30); do
+            if curl -fsS -o /dev/null -H "Cache-Control: no-cache" "https://registry.npmjs.org/${name}/${version}"; then
+              echo "${name}@${version} is visible on npm (attempt ${attempt})."
+              exit 0
+            fi
+            echo "${name}@${version} not visible on npm yet (attempt ${attempt}/30), waiting 10s."
+            sleep 10
+          done
+          echo "::error::${name}@${version} did not appear on npm within 5 minutes."
+          exit 1
       - name: Install mcp-publisher (pinned, checksum-verified)
         run: |
           curl -fsSL -o mcp-publisher.tar.gz \
