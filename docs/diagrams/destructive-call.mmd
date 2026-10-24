@@ -1,0 +1,19 @@
+sequenceDiagram
+    autonumber
+    actor User
+    participant LLM as MCP client / LLM
+    participant MCP as Keycloak MCP server
+    participant KC as Keycloak
+
+    User->>LLM: "Delete user bob from realm demo"
+    LLM->>MCP: user_delete (realm, userId)
+    MCP->>KC: GET user (for the preview)
+    KC-->>MCP: user data
+    MCP-->>LLM: isError, "Confirmation required. This would: permanently delete user bob ... Nothing was changed."
+    LLM->>User: "This will permanently delete bob. Proceed?"
+    User->>LLM: "Yes"
+    LLM->>MCP: user_delete (realm, userId, confirm: true)
+    MCP->>KC: DELETE user
+    KC-->>MCP: 204 No Content
+    MCP-->>LLM: deleted: true
+    LLM-->>User: "User bob was deleted."

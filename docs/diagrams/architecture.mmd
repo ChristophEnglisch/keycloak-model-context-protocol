@@ -1,0 +1,19 @@
+flowchart LR
+    subgraph Host["Your machine"]
+        Client["MCP client<br/>(Claude Desktop, Claude Code,<br/>VS Code, Cursor, ...)"]
+        subgraph Server["keycloak-model-context-protocol (Node.js)"]
+            Guards["Guards<br/>read-only, realm allowlist,<br/>master protection, confirmation"]
+            Toolsets["Toolsets, prompts, resources<br/>core, groups, roles, clients,<br/>sessions, events, security"]
+            Gateway["Gateway<br/>login and token cache"]
+            Guards --> Toolsets --> Gateway
+        end
+        Client <-->|"JSON-RPC over stdio"| Guards
+    end
+
+    subgraph KC["Keycloak"]
+        Token["Token endpoint"]
+        Admin["Admin REST API<br/>/admin/realms/..."]
+    end
+
+    Gateway -->|"client_credentials or password grant"| Token
+    Gateway -->|"Bearer token"| Admin

@@ -45,7 +45,9 @@
     "test:smoke": "npm run build && node tests/smoke/pack-smoke.mjs",
     "test:all": "npm test && npm run test:integration && npm run test:smoke",
     "docs:tools": "npm run build && node scripts/generate-tools-reference.mjs",
-    "docs:check": "npm run build && node scripts/generate-tools-reference.mjs --check"
+    "docs:check": "npm run build && node scripts/generate-tools-reference.mjs --check",
+    "docs:diagrams": "node scripts/render-diagrams.mjs",
+    "docs:diagrams:check": "node scripts/render-diagrams.mjs --check"
   },
   "dependencies": {
     "@keycloak/keycloak-admin-client": "^26.8.1",

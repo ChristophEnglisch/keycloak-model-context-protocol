@@ -1,7 +1,8 @@
 name: CI
 
 # Jobs run only when files they depend on change (see the "changes" job).
-# A docs-only PR therefore runs just "changes" and "CI result". Unknown paths,
+# A docs-only PR therefore runs just "changes" and "CI result" (plus the cheap
+# "Diagrams" check when it touches README.md or docs/diagrams/). Unknown paths,
 # changes to this file, the weekly schedule and manual runs run everything.
 # The Keycloak compatibility probes (integration-compat) never run on pull requests.
 # "CI result" aggregates all jobs and is the one check to mark as required.
@@ -40,6 +41,7 @@ jobs:
       integration: ${{ steps.filter.outputs.integration }}
       smoke: ${{ steps.filter.outputs.smoke }}
       audit: ${{ steps.filter.outputs.audit }}
+      diagrams: ${{ steps.filter.outputs.diagrams }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -69,7 +71,7 @@ jobs:
               full=true ;;
           esac
 
-          lint=false unit=false integration=false smoke=false audit=false
+          lint=false unit=false integration=false smoke=false audit=false diagrams=false
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             case "$f" in
@@ -87,6 +89,11 @@ jobs:
                 lint=true integration=true ;;
               tests/smoke/*)
                 lint=true smoke=true ;;
+              # The diagrams job checks the SVGs against their sources and the README embeds.
+              scripts/render-diagrams.mjs)
+                lint=true diagrams=true ;;
+              README.md|docs/diagrams/*)
+                diagrams=true ;;
               # docs:check (lint job) regenerates this file from the server.
               scripts/*|biome.json|docs/tools-reference.md)
                 lint=true ;;
@@ -102,10 +109,10 @@ jobs:
 
           echo "Changed files:"; echo "${changed:-(none, full run)}" | sed 's/^/  /'
           if [ "$full" = true ]; then
-            lint=true unit=true integration=true smoke=true audit=true
+            lint=true unit=true integration=true smoke=true audit=true diagrams=true
           fi
           printf '%s\n' "lint=$lint" "unit=$unit" "integration=$integration" "smoke=$smoke" "audit=$audit" \
-            | tee -a "$GITHUB_OUTPUT"
+            "diagrams=$diagrams" | tee -a "$GITHUB_OUTPUT"
 
   lint-typecheck:
     name: Lint & typecheck
@@ -125,6 +132,22 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run docs:check
+
+  diagrams:
+    name: Diagrams
+    needs: changes
+    if: ${{ needs.changes.outputs.diagrams == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      # Compares the source stamps only, so neither npm ci nor a browser is needed.
+      - run: npm run docs:diagrams:check
 
   unit:
     name: Unit (Node ${{ matrix.node }})
@@ -244,7 +267,7 @@ jobs:
   ci-result:
     name: CI result
     # integration-compat is left out on purpose: its probes may fail.
-    needs: [changes, lint-typecheck, unit, integration, build-smoke, audit]
+    needs: [changes, lint-typecheck, diagrams, unit, integration, build-smoke, audit]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
