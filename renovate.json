@@ -1,0 +1,75 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":semanticCommits", "helpers:pinGitHubActionDigests"],
+  "ignorePaths": ["**/node_modules/**"],
+  "timezone": "Europe/Berlin",
+  "schedule": ["before 6am on monday"],
+  "rangeStrategy": "bump",
+  "minimumReleaseAge": "3 days",
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "minimumReleaseAge": null,
+    "automerge": true
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Newest Keycloak minor the integration tests and the local docker compose run against. The oldest tested minor (26.0) and the compatibility probes stay pinned.",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/ci\\.yml$/",
+        "/^docker-compose\\.yml$/",
+        "/^tests/integration/global-setup\\.ts$/"
+      ],
+      "matchStrings": [
+        "keycloak: \\[\"\\d+\\.\\d+\", \"(?<currentValue>\\d+\\.\\d+)\"\\]",
+        "- node: 22\\s+keycloak: \"(?<currentValue>\\d+\\.\\d+)\"",
+        "quay\\.io/keycloak/keycloak:\\$\\{KEYCLOAK_VERSION:-(?<currentValue>\\d+\\.\\d+)\\}",
+        "KEYCLOAK_VERSION\\?\\.trim\\(\\) \\|\\| \"(?<currentValue>\\d+\\.\\d+)\""
+      ],
+      "depNameTemplate": "quay.io/keycloak/keycloak",
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Runtime dependencies ship to users: 'deps' commits show up in the changelog and trigger a patch release.",
+      "matchDepTypes": ["dependencies"],
+      "semanticCommitType": "deps",
+      "semanticCommitScope": null
+    },
+    {
+      "description": "Merge non-major updates once 'CI result' is green: unit, integration (real Keycloak) and pack smoke tests guard them. Majors stay manual.",
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "automerge": true
+    },
+    {
+      "description": "Node versions (engines, .nvmrc, CI matrix) are a support decision and change together by hand.",
+      "matchDepNames": ["node"],
+      "enabled": false
+    },
+    {
+      "description": "@types/node follows the oldest supported Node major (engines.node), so the typecheck flags APIs only newer runtimes have.",
+      "matchPackageNames": ["@types/node"],
+      "allowedVersions": "22.x"
+    },
+    {
+      "description": "MCP SDK packages are released together.",
+      "matchPackageNames": ["@modelcontextprotocol/**"],
+      "groupName": "MCP SDK"
+    },
+    {
+      "description": "The admin client follows the Keycloak release it was built for, so both move in one PR.",
+      "matchPackageNames": ["@keycloak/keycloak-admin-client", "quay.io/keycloak/keycloak"],
+      "groupName": "Keycloak"
+    },
+    {
+      "description": "A new Keycloak minor needs a human: the docs name the tested versions and earlier minors changed permission behaviour.",
+      "matchPackageNames": ["quay.io/keycloak/keycloak"],
+      "automerge": false
+    }
+  ]
+}

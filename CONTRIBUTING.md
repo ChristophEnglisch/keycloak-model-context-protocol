@@ -57,6 +57,10 @@ Implementation details are in the code and its existing tools; follow their patt
 
 Releases are cut by [release-please](https://github.com/googleapis/release-please) from the Conventional Commit titles merged into `main`. It opens a release pull request with the changelog and version bump; merging it tags the release, publishes to npm with [Trusted Publishing](https://docs.npmjs.com/trusted-publishers) and a provenance attestation, and updates the entry in the [MCP Registry](https://registry.modelcontextprotocol.io). Contributors do not need to do anything beyond using the right commit title. A faulty release is deprecated on npm and followed by a patch release, never unpublished.
 
+## Dependency updates
+
+[Renovate](https://docs.renovatebot.com/) keeps dependencies, GitHub Actions and the newest tested Keycloak version current ([`renovate.json`](renovate.json)). It opens pull requests on Monday mornings for releases at least three days old; security fixes come right away. Minor, patch and digest updates and the weekly lockfile refresh merge themselves once CI is green. Major updates and a new Keycloak minor wait for a review. Runtime dependency updates use the `deps:` commit type, which appears in the changelog and triggers a patch release. `@types/node` stays on the oldest supported Node major. The "Dependency Dashboard" issue lists pending and held-back updates.
+
 ## Versioning policy (Semver)
 
 The public API consists of:
