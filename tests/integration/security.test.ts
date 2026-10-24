@@ -4,7 +4,7 @@ import { REALM, REALM_B, USERS } from "./helpers/constants.js";
 import { describeIt } from "./helpers/context.js";
 import { masterAdminEnv, type RealServer, startRealServer, textOf } from "./helpers/server.js";
 
-describeIt("SEC-08: path traversal is stopped by the guards", () => {
+describeIt("path traversal is stopped by the guards", () => {
   let server: RealServer;
   beforeAll(async () => {
     server = await startRealServer(masterAdminEnv());

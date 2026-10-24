@@ -1,8 +1,6 @@
 # Security model
 
-This document describes what the server protects against, how a tool call is checked, what you must configure yourself and which findings of the pre-1.0 [security analysis](analysis/01-security.md) are fixed. To report a vulnerability, see [SECURITY.md](../SECURITY.md).
-
-The statements below were checked against the code in `src/` (mainly `src/guards.ts`, `src/tools/shared.ts`, `src/keycloak/*`, `src/config.ts`, `src/logging.ts`).
+This document describes what the server protects against, how a tool call is checked, what you must configure yourself and where the limits of the built-in controls are. To report a vulnerability, see [SECURITY.md](../SECURITY.md).
 
 ## Trust boundaries
 
@@ -103,7 +101,7 @@ See [configuration](configuration.md) for the full role matrix per tool.
 
 Prompt injection through Keycloak data cannot be filtered reliably. The measures reduce the chance and, more importantly, the damage:
 
-- **Structured output.** Results are returned as `structuredContent` that conforms to an output schema. The text `content` is a short neutral summary built by the server (counts, IDs, realm names). Free text from Keycloak (names, descriptions) is not placed into summaries. Two exceptions to keep in mind: the confirmation preview of `user_delete` quotes the username, and Keycloak error details are appended to error messages (truncated to 300 characters).
+- **Structured output.** Results are returned as `structuredContent` that conforms to an output schema. The text `content` is a short neutral summary built by the server (counts, IDs, realm names). Free text from Keycloak (names, descriptions) is not placed into summaries. Two places do carry Keycloak text: the confirmation preview of `user_delete` names the user, so the human can recognise who is affected, and error messages include Keycloak's error detail, truncated to 300 characters.
 - **Allowlisted fields.** Only a safe subset is returned; no free-form attributes, which are the easiest place to hide instructions.
 - **Server instructions.** The server announces that tool data is data and never instructions, and that destructive tools need explicit user approval.
 - **Prompts.** The workflow prompts (`onboard_employee`, `offboard_employee`, `audit_realm_security`, `investigate_failed_logins`) quote user-supplied values as JSON strings, include a data notice, and tell the model to ask the user instead of improvising when a tool is missing.
@@ -163,30 +161,20 @@ Arguments and result data are not logged, so there is no personal data and no fr
 - [ ] Secrets only in the client's `env` block or a secret store; no `.env` or client config in version control
 - [ ] Keycloak admin events enabled in the target realm; stderr collected where you need an audit trail
 - [ ] Brute-force detection enabled in the auth realm so repeated failed logins do not go unnoticed
-- [ ] Version pinned (`keycloak-model-context-protocol@1.0.0`) instead of an unpinned `npx` call; check the npm provenance of the release
+- [ ] Version pinned (`keycloak-model-context-protocol@1.0.0`) instead of an unpinned `npx` call; provenance checked with `npm audit signatures` after installing
 - [ ] First run against a test realm
 - [ ] Secret rotation planned (client secret), and a way to disable the service account quickly
 
-## Findings of the analysis and their status in 1.0
+## Known limitations
 
-Status was checked against the code of this branch, not taken from the roadmap. "Fixed" means the described problem can no longer occur in the implementation, "partial" means mitigated with a known remaining gap, "open" means not addressed.
+The controls above narrow what the server does, but some limits are by design or belong to other components. Plan for them in your setup.
 
-| ID | Finding | Status | Measure in 1.0 and remaining gap |
-|---|---|---|---|
-| SEC-01 | Default credentials `admin`/`admin` | **Fixed** | `loadConfig` has no credential defaults and fails fast with a `ConfigError` before the server starts. Only the non-secret client id `admin-cli` defaults for the password grant. |
-| SEC-02 | Shared mutable client state, credentials sent to the wrong realm, race condition | **Fixed** | No `setConfig`. The admin client is bound to the auth realm for its whole life, target realms travel only in request payloads. Covered by `tests/unit/realm-isolation.test.ts`. |
-| SEC-03 | Super user via password grant | **Partial** | `client_credentials` is selected automatically when a client secret is set, and docs recommend a service account. The password grant still exists (with `admin-cli`) and the server does not warn when it runs as a `master` super admin. Least privilege is a configuration duty. |
-| SEC-04 | Re-authentication on every call, no token cache | **Fixed** | Cached token with expiry from the JWT `exp` and a 30 s refresh skew, single-flight login, refresh-token use, one re-login after HTTP 401. See `src/keycloak/gateway.ts`. |
-| SEC-05 | No read-only mode, no realm or tool allowlist | **Fixed** | `KEYCLOAK_MCP_READ_ONLY`, `KEYCLOAK_MCP_REALMS`, `KEYCLOAK_MCP_TOOLSETS`, `KEYCLOAK_MCP_ALLOW_MASTER_WRITE`. Disabled tools are not registered. The defaults are permissive for realms (empty allowlist means all). |
-| SEC-06 | Destructive tools without annotations, confirmation or protection | **Partial** | Annotations on all tools, automatic `confirm` parameter with preview for the four destructive tools, `master` write protection. Gaps: `confirm` is set by the model itself, so it is not proof of human approval (a client prompt is needed); no protected list for admin users or service accounts; no dry run for write tools. Elicitation was deliberately not used (see [architecture](architecture.md)). |
-| SEC-07 | Prompt injection via Keycloak data | **Partial** | Structured output, neutral summaries, allowlisted fields, no attributes, quoted prompt arguments, data notice, blast-radius limits. Cannot be eliminated. Known leaks of Keycloak text into messages: the `user_delete` preview and Keycloak error details. |
-| SEC-08 | Missing input validation, path manipulation via `..` | **Fixed** | `assertPathSegment` on `realm`, `id`, `userId` and `groupId` for all tools, resources and prompts, and on role names before `findOneByName`/`findRole`. The public `clientId` is only sent as a query parameter. The admin client URL-encodes all path parameters (`/`, `?`, `%`), so only literal dot segments needed the guard. Verified against real Keycloak 24.0 to 26.8 by `tests/integration/security.test.ts` (`userId: ".."` and `realm: "a/.."` are rejected, the realm still exists). No UUID format check, as it is not needed for safety. |
-| SEC-09 | `auth()` outside try, protocol errors instead of `isError` | **Fixed** | Login happens inside the gateway, all failures are mapped to `ToolError` and returned as `isError: true`. |
-| SEC-10 | HTTP default, no TLS/CA option, no timeouts | **Partial** | No default URL (required), `KEYCLOAK_MCP_TIMEOUT_MS` (default 30000) passed to the admin client, timeout and TLS errors mapped to clear messages, `NODE_EXTRA_CA_CERTS` documented. Plain `http://` URLs for non-loopback hosts log a warning on startup. Gap: no hard opt-in flag; such URLs are still accepted. |
-| SEC-11 | No logging or audit trail | **Fixed** | One `tool_call` / `resource_read` line per call on stderr with secret masking. No correlation ID (not implemented). Argument-level detail comes from Keycloak admin events. |
-| SEC-12 | Vulnerable dependencies | **Fixed** | SDK v2, admin client 26.8.x, Zod 4. `npm audit --omit=dev` reports 0 vulnerabilities (checked on this branch). CI gate `npm audit --omit=dev --audit-level=high` and Dependabot are configured. |
-| SEC-13 | CI/CD and publishing (`NPM_TOKEN`, no provenance, permissions, pinning) | **Partial** | Release workflow uses npm Trusted Publishing (OIDC) with provenance, minimal job permissions and SHA-pinned actions. release-please runs with a short-lived token of a repository-scoped GitHub App, so the `GITHUB_TOKEN` stays read-only and the setting that lets workflows create and approve pull requests stays off. Open until done by the repo owner on npmjs.com and GitHub: configure the trusted publisher, disallow token publishing, delete `NPM_TOKEN` (see [release process](release-process.md)). Not yet exercised by a real release. |
-| SEC-14 | Plaintext secrets in client config, unsafe README examples | **Partial** | Docs and `.env.example` use a service account and placeholders, `SECURITY.md` exists. Remaining: stdio MCP clients keep the `env` block in a plain-text config file; the server cannot change that. Use a secret store or a client feature for input prompts where available. |
-| SEC-15 | Personal data flows to the LLM provider without minimisation | **Partial** | Pagination (default 50, max 200, analysis suggested 20), fixed field subsets, no attributes, search instead of full listing, documentation above. No configurable field selection, no pseudonymisation. |
-
-Summary: 8 fixed (SEC-01, 02, 04, 05, 08, 09, 11, 12), 7 partial (SEC-03, 06, 07, 10, 13, 14, 15), 0 open. The partial items either have a gap that is a configuration or client responsibility (SEC-03, 06, 14), an inherent limit (SEC-07, 15), or a small code gap (SEC-10), or waits for an owner action (SEC-13).
+| Limitation | What to do |
+|---|---|
+| `confirm: true` is set by the model, so it is not proof that a human approved the call. | Use a client that asks before tool calls marked `destructiveHint`, and keep that prompt enabled. |
+| Plain `http://` URLs are accepted for any host. For non-loopback hosts the server only logs a warning at startup. | Use `https://` for every Keycloak that is not on localhost. |
+| The password grant is still supported, and the server cannot tell whether the configured account has more rights than it needs. | Use a service account with `client_credentials` and the role profiles from [configuration](configuration.md#recommended-role-profiles). |
+| There is no protected list of users (for example admin users or service accounts), and write tools that are not destructive run without a preview. | Limit `manage-users` to realms where this is acceptable, use `KEYCLOAK_MCP_REALMS`, or run with `KEYCLOAK_MCP_READ_ONLY=true`. |
+| Some MCP clients, such as Claude Desktop, store the `env` block, including the client secret, in a plain-text config file. | Use the client's variable expansion or a wrapper script that reads the secret from a keychain; see [clients](clients.md#how-to-handle-the-secret). |
+| Prompt injection through Keycloak data can be reduced, but not prevented. | Keep the blast-radius limits and the human approval step; see [Prompt injection](#prompt-injection). |
+| User tools always return their fixed field subset. There is no per-deployment field selection or pseudonymisation. | Enable only the toolsets you need and check your LLM provider's data-processing terms. |
