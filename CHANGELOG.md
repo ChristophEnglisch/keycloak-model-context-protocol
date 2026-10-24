@@ -18,7 +18,7 @@ Upgrading from 0.0.x? Read the [1.0 upgrade guide](docs/migration-1.0.md) with h
 
 ### ⚠ BREAKING CHANGES
 
-* tools are renamed to <domain>_<verb> (create-user -> user_create, delete-user -> user_delete, list-realms -> realm_list, list-users -> user_search). Credentials must be configured explicitly; the admin/admin fallback is gone and KEYCLOAK_ADMIN/KEYCLOAK_ADMIN_PASSWORD are deprecated in favour of KEYCLOAK_USERNAME/KEYCLOAK_PASSWORD or KEYCLOAK_CLIENT_ID/KEYCLOAK_CLIENT_SECRET. Destructive tools require
+* Tools are renamed to `<domain>_<verb>` (`create-user` → `user_create`, `delete-user` → `user_delete`, `list-realms` → `realm_list`, `list-users` → `user_search`). Credentials must be configured explicitly; the `admin`/`admin` fallback is gone, and `KEYCLOAK_ADMIN`/`KEYCLOAK_ADMIN_PASSWORD` are deprecated in favour of `KEYCLOAK_USERNAME`/`KEYCLOAK_PASSWORD` or `KEYCLOAK_CLIENT_ID`/`KEYCLOAK_CLIENT_SECRET`. Destructive tools require an explicit confirmation through their `confirm` parameter. Node.js 22 or newer is required. See the [1.0 upgrade guide](https://github.com/ChristophEnglisch/keycloak-model-context-protocol/blob/main/docs/migration-1.0.md).
 
 ### Features
 
