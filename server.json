@@ -12,7 +12,9 @@
       "registryType": "npm",
       "identifier": "keycloak-model-context-protocol",
       "version": "1.0.0",
-      "transport": { "type": "stdio" },
+      "transport": {
+        "type": "stdio"
+      },
       "environmentVariables": [
         {
           "name": "KEYCLOAK_URL",
@@ -58,7 +60,10 @@
           "description": "Grant type; auto-detected if unset (client_credentials when a secret is set, else password)",
           "isRequired": false,
           "format": "string",
-          "choices": ["client_credentials", "password"]
+          "choices": [
+            "client_credentials",
+            "password"
+          ]
         },
         {
           "name": "KEYCLOAK_MCP_READ_ONLY",
@@ -107,7 +112,12 @@
           "isRequired": false,
           "format": "string",
           "default": "info",
-          "choices": ["debug", "info", "warn", "error"]
+          "choices": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ]
         }
       ]
     }
