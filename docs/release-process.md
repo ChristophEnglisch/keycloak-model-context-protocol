@@ -34,7 +34,7 @@ flowchart TD
 
 Hinweise:
 
-- Der Release-PR wird mit dem `GITHUB_TOKEN` angelegt. GitHub startet für solche PRs **keine** weiteren Workflows, `ci.yml` läuft dort also nicht automatisch. Da der Release-PR nur Version, Changelog und `server.json` ändert und der Publish-Job vor dem Veröffentlichen selbst `build` und `test` ausführt, ist das akzeptabel. Wer die Checks auch am Release-PR will, schließt ihn einmal und öffnet ihn wieder, oder stellt release-please auf ein PAT bzw. eine GitHub App um.
+- release-please arbeitet mit einem kurzlebigen Token der **GitHub App „Release App“** (Einrichtung, Schritt 3), nicht mit dem `GITHUB_TOKEN`. Deshalb läuft `ci.yml` auch auf dem Release-PR, und die Repo-Einstellung „Allow GitHub Actions to create and approve pull requests“ bleibt aus. Mit dem `GITHUB_TOKEN` würde GitHub für den Release-PR keine Workflows starten, und das Häkchen würde jedem Workflow erlauben, PRs freizugeben.
 - Der MCP-Registry-Job läuft nur, wenn der npm-Publish erfolgreich war. Schlägt er fehl, kann er unabhängig wiederholt werden (Re-run des Jobs), die npm-Version bleibt bestehen.
 
 ## Einmalige Einrichtung (durch den Repo-Owner)
@@ -45,13 +45,28 @@ Hinweise:
    - Workflow filename: `release.yml`
    - Environment name: `release`
 2. **GitHub-Environment `release` anlegen** (*Settings → Environments*). Empfohlen: Required reviewers (der Owner), Deployment branches/tags auf `main` bzw. `v*` beschränken. Beide Publish-Jobs verwenden dieses Environment, jeder Publish wartet also auf eine Freigabe.
-3. **Workflow-Berechtigung für release-please:** *Settings → Actions → General → Workflow permissions* auf „Read and write permissions“ setzen und „Allow GitHub Actions to create and approve pull requests“ aktivieren. Ohne das kann release-please keinen Release-PR anlegen.
-   Optional: ein Secret `RELEASE_PLEASE_TOKEN` (Fine-grained PAT oder GitHub-App-Token mit *Contents* und *Pull requests: write* für dieses Repo). Der Workflow nutzt es automatisch statt des `GITHUB_TOKEN`. Vorteil: Auf Release-PRs läuft dann auch `ci.yml`, was mit dem `GITHUB_TOKEN` nicht passiert.
+3. **GitHub App für release-please anlegen.** release-please braucht ein Token, das PRs, Tags und Releases anlegen darf. Statt des `GITHUB_TOKEN` (und des Häkchens „Allow GitHub Actions to create and approve pull requests“) nutzt der Workflow eine eigene GitHub App, die nur für dieses Repo installiert ist.
+   1. Auf GitHub: *Settings (des Accounts) → Developer settings → GitHub Apps → New GitHub App*.
+      - **GitHub App name:** frei wählbar, z. B. `keycloak-mcp-release` (muss GitHub-weit eindeutig sein).
+      - **Homepage URL:** `https://github.com/ChristophEnglisch/keycloak-model-context-protocol`
+      - **Webhook:** *Active* abwählen (kein Webhook nötig).
+      - **Repository permissions:** *Contents: Read and write*, *Pull requests: Read and write*, *Issues: Read and write* (für die Labels `autorelease: pending/tagged`). *Metadata: Read-only* setzt GitHub automatisch. Sonst nichts.
+      - **Where can this GitHub App be installed?** *Only on this account*.
+      - *Create GitHub App*.
+   2. Auf der Seite der App die **Client ID** notieren (beginnt mit `Iv`) und unter *Private keys* → *Generate a private key* eine `.pem`-Datei erzeugen.
+   3. Links *Install App* → beim eigenen Account *Install* → *Only select repositories* → `keycloak-model-context-protocol`.
+   4. Im Repo unter *Settings → Secrets and variables → Actions*:
+      - Tab *Variables*: `RELEASE_APP_CLIENT_ID` = Client ID
+      - Tab *Secrets*: `RELEASE_APP_PRIVATE_KEY` = gesamter Inhalt der `.pem`-Datei (inklusive `-----BEGIN …` und `-----END …`). Die `.pem`-Datei danach lokal löschen.
+   5. *Settings → Actions → General → Workflow permissions*: **„Read repository contents and packages permissions“** und das Häkchen **„Allow GitHub Actions to create and approve pull requests“ aus**. Falls es vorher eingeschaltet wurde, wieder ausschalten.
+
+   Fehlt Variable oder Secret, bricht der Job `release-please` mit „Release app not configured“ ab.
 4. **Token-Publishing sperren.** Erst nachdem der erste Trusted-Publishing-Release (1.0.0) erfolgreich war: npmjs.com → Paket → *Settings → Publishing access* → „Require two-factor authentication and disallow tokens“. Danach alle bestehenden Automation-Tokens des Pakets widerrufen.
 5. **Altes Secret löschen:** GitHub → *Settings → Secrets and variables → Actions* → `NPM_TOKEN` entfernen.
 6. **Private Vulnerability Reporting aktivieren:** *Settings → Code security → Private vulnerability reporting* einschalten (Voraussetzung für den Meldeweg in `SECURITY.md`).
 7. **MCP Registry:** Das Feld `mcpName` in `package.json` muss `io.github.christophenglisch/keycloak-model-context-protocol` lauten und dem `name` in `server.json` entsprechen. Der Login erfolgt per GitHub-OIDC, es ist kein Secret nötig. Der Namespace `io.github.<user>/` wird gegen den GitHub-Besitzer des Repos geprüft. Falls die Registry die Groß-/Kleinschreibung (`ChristophEnglisch`) beanstandet, den Namen in `server.json` und `mcpName` entsprechend anpassen. Das lässt sich ohne Veröffentlichung nicht vorab prüfen.
-8. Optional: Branch Protection für `main` mit den Checks aus `ci.yml` (`lint-typecheck`, `unit`, `integration`, `build-smoke`, `audit`) als Pflicht. Die Integration-Zeilen für Keycloak 24.0 und 25.0 sind bewusst `continue-on-error` und sollten **nicht** als Pflicht-Check gesetzt werden.
+8. **Nur Squash-Merge erlauben:** *Settings → General → Pull Requests*: „Allow squash merging“ an, „Default commit message“ auf *Pull request title*, „Allow merge commits“ und „Allow rebase merging“ aus. Dann wird der PR-Titel (Conventional Commit) zur Commit-Message auf `main`, und es entstehen keine Merge-Commits, die release-please nicht lesen kann.
+9. Optional: Branch Protection für `main` mit den Checks aus `ci.yml` (`lint-typecheck`, `unit`, `integration`, `build-smoke`, `audit`) als Pflicht. Die Integration-Zeilen für Keycloak 24.0 und 25.0 sind bewusst `continue-on-error` und sollten **nicht** als Pflicht-Check gesetzt werden.
 
 ## 1.0.0 schneiden
 
@@ -84,8 +99,11 @@ Hinweis: `chore:`/`ci:`-Commits allein lösen keinen Release-PR aus. Abhängigke
 
 ## Fehlerbehebung
 
-- **`release-please failed: GitHub Actions is not permitted to create or approve pull requests`:** Einrichtung, Schritt 3 fehlt. release-please hat den Branch `release-please--branches--main--…` dann schon angelegt, nur der PR fehlt. Nach dem Umstellen der Einstellung unter *Actions → Release* den fehlgeschlagenen Lauf mit *Re-run failed jobs* neu starten (oder den nächsten Push auf `main` abwarten). Der vorhandene Branch wird wiederverwendet.
-- **`commit could not be parsed` im Log:** betrifft Merge-Commits wie „Merge pull request #12 …“ und alte Commits ohne Conventional-Commit-Titel. Das ist harmlos, sie fehlen nur im Changelog. Empfehlung: unter *Settings → General → Pull Requests* nur Squash-Merge erlauben und als Standard-Commit-Message den PR-Titel verwenden.
+- **`Release app not configured`:** Variable `RELEASE_APP_CLIENT_ID` oder Secret `RELEASE_APP_PRIVATE_KEY` fehlt (Einrichtung, Schritt 3.4). Danach unter *Actions → Release* den Lauf mit *Re-run failed jobs* neu starten.
+- **`create-github-app-token` meldet „Not Found“ oder „Integration not found“:** Die App ist nicht für dieses Repo installiert (Schritt 3.3), oder Client ID und Private Key gehören zu verschiedenen Apps.
+- **`Resource not accessible by integration` beim Anlegen des PRs oder der Labels:** Der App fehlt eine Berechtigung (Schritt 3.1). Nach dem Ändern der Rechte muss die Installation die neuen Rechte bestätigen: *Settings → Applications → Installed GitHub Apps → Configure*.
+- **`GitHub Actions is not permitted to create or approve pull requests`:** Tritt nur auf, wenn release-please doch mit dem `GITHUB_TOKEN` läuft (alter Stand des Workflows). Lösung ist die App aus Schritt 3, nicht das Häkchen. release-please verwendet einen schon angelegten Branch `release-please--branches--main--…` beim nächsten Lauf wieder.
+- **`commit could not be parsed` im Log:** betrifft Merge-Commits wie „Merge pull request #12 …“ und alte Commits ohne Conventional-Commit-Titel. Das ist harmlos, sie fehlen nur im Changelog. Abhilfe: nur Squash-Merge erlauben (Einrichtung, Schritt 8).
 - **Breaking-Change-Text im Changelog abgeschnitten:** Zeilen im Commit-Body, die mit `wort:` beginnen (z. B. `confirm: true`), hält der Parser für Git-Trailer und beendet dort den Text. Korrektur ohne neuen Commit: In die Beschreibung des gemergten PRs einen Block `BEGIN_COMMIT_OVERRIDE` … `END_COMMIT_OVERRIDE` mit der korrigierten Commit-Message einfügen; release-please nutzt ihn beim nächsten Lauf.
 - **Lint schlägt nach dem Release-PR fehl:** `CHANGELOG.md`, `server.json` und `.release-please-manifest.json` schreibt release-please in eigenem Format. Sie sind deshalb in `biome.json` vom Formatter ausgenommen. Nicht wieder aufnehmen.
 - **Kein Release-PR erscheint:** Seit dem letzten Release gab es keine Commits vom Typ `feat`, `fix`, `perf`, `docs` oder `deps`, oder Workflow-Berechtigungen fehlen (Einrichtung, Schritt 3).
