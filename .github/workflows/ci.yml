@@ -1,24 +1,115 @@
 name: CI
 
+# Jobs run only when files they depend on change (see the "changes" job).
+# A docs-only PR therefore runs just "changes" and "CI result". Unknown paths,
+# changes to this file, the weekly schedule and manual runs run everything.
+# "CI result" aggregates all jobs and is the one check to mark as required.
+
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # Weekly full run: catches new advisories (npm audit) and upstream drift
+    # (Node, Keycloak images) even when the repository itself does not change.
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Only PR runs are superseded by newer pushes. A cancelled run on main would
+  # leave its commits untested, because the next run only diffs its own range.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   NPM_CONFIG_UPDATE_NOTIFIER: "false"
   NPM_CONFIG_FUND: "false"
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      lint: ${{ steps.filter.outputs.lint }}
+      unit: ${{ steps.filter.outputs.unit }}
+      integration: ${{ steps.filter.outputs.integration }}
+      smoke: ${{ steps.filter.outputs.smoke }}
+      audit: ${{ steps.filter.outputs.audit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # On pull_request HEAD is the merge commit; HEAD^1 is the current base.
+          fetch-depth: 2
+          persist-credentials: false
+      - id: filter
+        name: Classify changed files
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          full=false
+          changed=""
+          case "$EVENT" in
+            pull_request)
+              changed="$(git diff --name-only HEAD^1 HEAD)" ;;
+            push)
+              # New branch or rewritten history: no usable "before", test everything.
+              if [[ "$BEFORE" =~ ^0+$ ]] || ! git fetch --no-tags --depth=1 origin "$BEFORE" 2>/dev/null; then
+                full=true
+              else
+                changed="$(git diff --name-only "$BEFORE" "$SHA")"
+              fi ;;
+            *)
+              full=true ;;
+          esac
+
+          lint=false unit=false integration=false smoke=false audit=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              .github/workflows/ci.yml)
+                full=true ;;
+              package.json|package-lock.json)
+                lint=true unit=true integration=true smoke=true audit=true ;;
+              src/*|tsconfig.json|tsconfig.build.json)
+                lint=true unit=true integration=true smoke=true ;;
+              tests/helpers/*)
+                lint=true unit=true integration=true ;;
+              tests/unit/*|vitest.config.ts)
+                lint=true unit=true ;;
+              tests/integration/*|vitest.integration.config.ts)
+                lint=true integration=true ;;
+              tests/smoke/*)
+                lint=true smoke=true ;;
+              # docs:check (lint job) regenerates this file from the server.
+              scripts/*|biome.json|docs/tools-reference.md)
+                lint=true ;;
+              # Nothing in CI reads these.
+              docs/*|*.md|LICENSE|.editorconfig|.env.example|.gitignore|.nvmrc|docker-compose.yml|server.json|release-please-config.json|.release-please-manifest.json|.github/ISSUE_TEMPLATE/*|.github/dependabot.yml|.github/workflows/release.yml)
+                ;;
+              # Unknown path: rather run too much than miss something.
+              *)
+                echo "::notice::Unclassified path $f, running all jobs."
+                full=true ;;
+            esac
+          done <<< "$changed"
+
+          echo "Changed files:"; echo "${changed:-(none, full run)}" | sed 's/^/  /'
+          if [ "$full" = true ]; then
+            lint=true unit=true integration=true smoke=true audit=true
+          fi
+          printf '%s\n' "lint=$lint" "unit=$unit" "integration=$integration" "smoke=$smoke" "audit=$audit" \
+            | tee -a "$GITHUB_OUTPUT"
+
   lint-typecheck:
     name: Lint & typecheck
+    needs: changes
+    if: ${{ needs.changes.outputs.lint == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -36,6 +127,8 @@ jobs:
 
   unit:
     name: Unit (Node ${{ matrix.node }})
+    needs: changes
+    if: ${{ needs.changes.outputs.unit == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -55,7 +148,9 @@ jobs:
 
   integration:
     name: Integration (Node ${{ matrix.node }}, Keycloak ${{ matrix.keycloak }})
-    needs: [lint-typecheck, unit]
+    needs: [changes, lint-typecheck, unit]
+    # Waits for the cheap jobs, but also runs when they were skipped as unaffected.
+    if: ${{ !cancelled() && !failure() && needs.changes.outputs.integration == 'true' }}
     # Docker is preinstalled on ubuntu-latest, so testcontainers works without extra setup.
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -90,7 +185,8 @@ jobs:
 
   build-smoke:
     name: Build & pack smoke (Node ${{ matrix.node }})
-    needs: [lint-typecheck, unit]
+    needs: [changes, lint-typecheck, unit]
+    if: ${{ !cancelled() && !failure() && needs.changes.outputs.smoke == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -111,6 +207,8 @@ jobs:
 
   audit:
     name: npm audit (production)
+    needs: changes
+    if: ${{ needs.changes.outputs.audit == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -122,3 +220,21 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm audit --omit=dev --audit-level=high
+
+  ci-result:
+    name: CI result
+    needs: [changes, lint-typecheck, unit, integration, build-smoke, audit]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check job results
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "Job results: $RESULTS"
+          # "skipped" means the job was not affected by this change and is fine.
+          if echo "$RESULTS" | grep -qE '"(failure|cancelled)"'; then
+            echo "::error::At least one CI job failed or was cancelled."
+            exit 1
+          fi

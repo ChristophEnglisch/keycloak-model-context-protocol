@@ -26,6 +26,8 @@ cp .env.example .env   # only for manual runs against your own Keycloak
 
 Run lint, typecheck, test and build before opening a PR.
 
+CI (`.github/workflows/ci.yml`) only runs the jobs a change affects: a docs-only PR runs no tests, a change under `tests/unit/` runs lint and unit tests, a change under `src/` or to the dependencies runs everything. The mapping lives in the `changes` job; paths it does not know trigger a full run. The `CI result` check summarises all jobs.
+
 ## Test levels
 
 - **Unit** (`tests/unit/`): fast, no network, Keycloak client mocked.

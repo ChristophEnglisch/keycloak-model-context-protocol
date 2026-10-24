@@ -6,7 +6,7 @@ Beteiligte Dateien:
 
 | Datei | Zweck |
 |---|---|
-| `.github/workflows/ci.yml` | Qualitätsprüfung bei Push auf `main` und bei Pull Requests |
+| `.github/workflows/ci.yml` | Qualitätsprüfung bei Push auf `main`, bei Pull Requests und wöchentlich. Jobs laufen nur, wenn sich ihre Dateien ändern; der Job „CI result“ fasst alles zusammen |
 | `.github/workflows/release.yml` | release-please, npm-Publish, MCP-Registry-Publish |
 | `release-please-config.json` | Release-Konfiguration (Changelog-Sektionen, `extra-files`, `release-as`) |
 | `.release-please-manifest.json` | Aktuell veröffentlichte Version (Startwert `0.0.2`) |
@@ -66,7 +66,7 @@ Hinweise:
 6. **Private Vulnerability Reporting aktivieren:** *Settings → Code security → Private vulnerability reporting* einschalten (Voraussetzung für den Meldeweg in `SECURITY.md`).
 7. **MCP Registry:** Das Feld `mcpName` in `package.json` muss `io.github.ChristophEnglisch/keycloak-model-context-protocol` lauten und exakt dem `name` in `server.json` entsprechen. Der Login erfolgt per GitHub-OIDC, es ist kein Secret nötig. Die Registry prüft den Namespace `io.github.<user>/` gegen den GitHub-Besitzer des Repos und beachtet dabei die Groß-/Kleinschreibung: `io.github.christophenglisch/…` wurde beim Release 1.0.0 mit 403 abgelehnt. Da die Registry `mcpName` aus dem veröffentlichten npm-Paket liest, lässt sich ein falscher Name nur mit einer neuen Version korrigieren.
 8. **Nur Squash-Merge erlauben:** *Settings → General → Pull Requests*: „Allow squash merging“ an, „Default commit message“ auf *Pull request title*, „Allow merge commits“ und „Allow rebase merging“ aus. Dann wird der PR-Titel (Conventional Commit) zur Commit-Message auf `main`, und es entstehen keine Merge-Commits, die release-please nicht lesen kann.
-9. Optional: Branch Protection für `main` mit den Checks aus `ci.yml` (`lint-typecheck`, `unit`, `integration`, `build-smoke`, `audit`) als Pflicht. Die Integration-Zeilen für Keycloak 24.0 und 25.0 sind bewusst `continue-on-error` und sollten **nicht** als Pflicht-Check gesetzt werden.
+9. Optional: Branch Protection für `main` mit **nur** dem Check `CI result` aus `ci.yml` als Pflicht. Die einzelnen Jobs werden übersprungen, wenn eine Änderung sie nicht betrifft (z. B. reine Doku-PRs), und würden als Pflicht-Check dann ewig auf sich warten lassen. `CI result` schlägt fehl, sobald ein ausgeführter Job fehlschlägt, und ist bei übersprungenen Jobs grün. Die Integration-Zeilen für Keycloak 24.0 und 25.0 sind `continue-on-error` und blockieren auch `CI result` nicht.
 
 ## 1.0.0 schneiden
 
