@@ -35,7 +35,6 @@ async function collect() {
   const { TOOLSETS } = await load("tools/index.js");
   const { TOOLSET_NAMES } = await load("config.js");
   const { silentLogger } = await load("logging.js");
-  const { VERSION } = await load("version.js");
 
   const config = {
     url: "http://keycloak.invalid",
@@ -68,7 +67,7 @@ async function collect() {
       name,
       toolNames: defs.map((d) => d.name),
     }));
-    return { tools, prompts, resources, templates, toolsets, version: VERSION };
+    return { tools, prompts, resources, templates, toolsets };
   } finally {
     await client.close();
     await server.close();
@@ -188,7 +187,7 @@ function renderTool(tool) {
   return lines.join("\n");
 }
 
-function render({ tools, prompts, resources, templates, toolsets, version }) {
+function render({ tools, prompts, resources, templates, toolsets }) {
   const byName = new Map(tools.map((t) => [t.name, t]));
   const out = [];
   out.push(
@@ -200,7 +199,9 @@ function render({ tools, prompts, resources, templates, toolsets, version }) {
     "",
     "# Tools reference",
     "",
-    `> Generated from the server definitions of version ${version}. Do not edit by hand.`,
+    // No package version here: release PRs bump it without regenerating this file,
+    // which would make `docs:check` fail on every release.
+    "> Generated from the server definitions. Do not edit by hand.",
     "",
     `The server exposes ${tools.length} tools in ${toolsets.length} toolsets, ${prompts.length} prompts and ${templates.length + resources.length} resources. Which tools are registered depends on \`KEYCLOAK_MCP_TOOLSETS\` (default: \`core,groups,roles\`) and \`KEYCLOAK_MCP_READ_ONLY\` (hides every tool that is not read-only). See [configuration](configuration.md).`,
     "",
