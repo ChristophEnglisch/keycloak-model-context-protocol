@@ -27,7 +27,7 @@
     "node": ">=22"
   },
   "bin": {
-    "keycloak-model-context-protocol": "./dist/index.js"
+    "keycloak-model-context-protocol": "dist/index.js"
   },
   "files": [
     "dist"

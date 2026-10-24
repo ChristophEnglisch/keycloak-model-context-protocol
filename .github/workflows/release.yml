@@ -3,12 +3,20 @@ name: Release
 # release-please opens/updates a release PR from Conventional Commits on main.
 # Merging that PR creates the tag + GitHub release; the jobs below then publish
 # to npm (Trusted Publishing / OIDC, no NPM_TOKEN) and to the MCP Registry.
+# A manual run (workflow_dispatch) skips release-please and publishes an existing
+# release tag again, e.g. after a failed publish job.
 # See docs/release-process.md. The npm Trusted Publisher on npmjs.com is bound
 # to THIS file name (release.yml) and the environment "release" - do not rename.
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish again (e.g. v1.0.0)
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -20,6 +28,7 @@ concurrency:
 jobs:
   release-please:
     name: release-please
+    if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # release-please acts with a short-lived GitHub App token, not the GITHUB_TOKEN:
@@ -59,17 +68,23 @@ jobs:
   publish-npm:
     name: Publish to npm
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    # !cancelled(): on a manual run release-please is skipped, which would otherwise skip this job too.
+    if: ${{ !cancelled() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: release
     permissions:
       contents: read
       id-token: write # npm Trusted Publishing (OIDC) + provenance
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.release-please.outputs.tag_name }}
     steps:
+      - name: Validate tag
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Invalid release tag '$TAG' (expected vX.Y.Z)"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: refs/tags/${{ env.TAG }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -85,20 +100,24 @@ jobs:
             echo "upgraded to npm $(npm --version)"
           fi
       - name: Check tag matches package.json
-        env:
-          EXPECTED: ${{ needs.release-please.outputs.version }}
         run: |
+          EXPECTED="${TAG#v}"
           actual="$(node -p "require('./package.json').version")"
           test "$actual" = "$EXPECTED" || { echo "package.json $actual != release $EXPECTED"; exit 1; }
       - run: npm ci --ignore-scripts
       - run: npm run build
       - run: npm test
+      # npm swallows a failed OIDC token exchange (it is only logged at "verbose")
+      # and then publishes without auth, which the registry answers with E404.
+      # --loglevel verbose makes the registry's reason ("oidc ... Failed token
+      # exchange request with body message: ...") visible in the job log.
       - name: Publish (OIDC, no token)
-        run: npm publish --provenance --access public --ignore-scripts
+        run: npm publish --provenance --access public --ignore-scripts --loglevel verbose
 
   publish-mcp-registry:
     name: Publish to MCP Registry
     needs: [release-please, publish-npm]
+    if: ${{ !cancelled() && needs.publish-npm.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: release
@@ -108,10 +127,11 @@ jobs:
     env:
       MCP_PUBLISHER_VERSION: v1.8.4
       MCP_PUBLISHER_SHA256: 5dc2fd415369c73551259f31cd33e2aacc9e0d1021e7f08fef1492d93b781628 # mcp-publisher_linux_amd64.tar.gz
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.release-please.outputs.tag_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: refs/tags/${{ env.TAG }}
           persist-credentials: false
       - name: Install mcp-publisher (pinned, checksum-verified)
         run: |
