@@ -16,4 +16,27 @@ describe("createLogger", () => {
     expect(lines[0]).toContain("[REDACTED]");
     expect(lines[0]).toContain("bob");
   });
+
+  it.each(["accessToken", "Authorization", "credentials", "Password", "refresh_token"])(
+    "redacts the value of key %s",
+    (key) => {
+      const lines: string[] = [];
+      const logger = createLogger({ level: "debug", write: (l) => lines.push(l) });
+      logger.info("x", { [key]: "VALUE-1" });
+      expect(lines[0]).not.toContain("VALUE-1");
+      expect(lines[0]).toContain("[REDACTED]");
+    },
+  );
+
+  it("masks every occurrence of a secret, also in warnings", () => {
+    const lines: string[] = [];
+    const logger = createLogger({
+      level: "debug",
+      secrets: ["s3cr3t"],
+      write: (l) => lines.push(l),
+    });
+    logger.warn("s3cr3t and again s3cr3t", { note: "s3cr3t" });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).not.toContain("s3cr3t");
+  });
 });

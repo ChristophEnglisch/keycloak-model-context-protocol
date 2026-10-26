@@ -63,6 +63,24 @@ describe("KeycloakAdminGateway", () => {
     expect(kc.auth).toHaveBeenCalledTimes(2);
   });
 
+  it("treats a token without exp as valid for 60 s minus the skew", async () => {
+    let nowMs = 1_000_000;
+    const kc = {
+      accessToken: undefined as string | undefined,
+      auth: vi.fn(async () => {
+        kc.accessToken = "opaque";
+      }),
+    };
+    const gateway = new KeycloakAdminGateway(config, {
+      client: kc as unknown as KcAdminClient,
+      now: () => nowMs,
+    });
+    await gateway.run(async () => 0);
+    nowMs += 31_000;
+    await gateway.run(async () => 0);
+    expect(kc.auth).toHaveBeenCalledTimes(2);
+  });
+
   it("uses the refresh token when available", async () => {
     const { gateway, kc, advance } = setup({ refresh: true, lifetimeSeconds: 100 });
     await gateway.run(async () => 0);

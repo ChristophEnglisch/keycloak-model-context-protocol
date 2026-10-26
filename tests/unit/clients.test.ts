@@ -96,6 +96,38 @@ describe("client_get", () => {
     expect(textOf(result)).not.toContain("secret");
   });
 
+  it("returns only allowlisted keys of a full representation", async () => {
+    h = await start();
+    h.kc.clients.findOne.mockResolvedValue({
+      ...leaky,
+      clientAuthenticatorType: "client-secret",
+      serviceAccountsEnabled: true,
+      authorizationSettings: { policies: [] },
+      access: { configure: true },
+      nodeReRegistrationTimeout: 1,
+      registeredNodes: { node: 1 },
+    });
+    h.kc.clients.listDefaultClientScopes.mockResolvedValue([]);
+    h.kc.clients.listOptionalClientScopes.mockResolvedValue([]);
+    const result = await h.call("client_get", { realm: "shop", id: "c1" });
+    expect(Object.keys(result.structuredContent ?? {}).sort()).toEqual(
+      [
+        "clientId",
+        "defaultClientScopes",
+        "enabled",
+        "id",
+        "name",
+        "optionalClientScopes",
+        "protocol",
+        "publicClient",
+        "redirectUris",
+        "rootUrl",
+        "serviceAccountsEnabled",
+        "webOrigins",
+      ].sort(),
+    );
+  });
+
   it("resolves by clientId using an exact match", async () => {
     h = await start();
     h.kc.clients.find.mockResolvedValue([{ id: "x", clientId: "app-2" }, leaky]);
@@ -136,6 +168,14 @@ describe("path segment guard", () => {
     expect(h.kc.clients.find).toHaveBeenCalledWith(
       expect.objectContaining({ realm: "demo", clientId: samlId }),
     );
+  });
+
+  it("rejects a dot segment as client id before calling Keycloak", async () => {
+    h = await start();
+    const result = await h.call("client_get", { realm: "shop", id: ".." });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toMatch(/Invalid id/);
+    expect(h.kc.clients.findOne).not.toHaveBeenCalled();
   });
 
   it("still rejects dot segments in path fields", async () => {

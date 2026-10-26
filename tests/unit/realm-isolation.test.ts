@@ -84,4 +84,21 @@ describe("realm isolation (real admin client, stubbed HTTP)", () => {
     await client.close();
     await server.close();
   });
+
+  it("logs in at the configured auth realm", async () => {
+    const config = makeConfig({ url: "http://kc.test", authRealm: "ops" });
+    const gateway = new KeycloakAdminGateway(config, { logger: silentLogger });
+    const server = createServer({ config, gateway, logger: silentLogger });
+    const client = new Client({ name: "t", version: "0" });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(st), client.connect(ct)]);
+
+    await client.callTool({ name: "user_search", arguments: { realm: "shop" } });
+    expect(
+      requests.filter((r) => r.path.includes("/protocol/openid-connect/token")).map((r) => r.path),
+    ).toEqual(["/realms/ops/protocol/openid-connect/token"]);
+
+    await client.close();
+    await server.close();
+  });
 });

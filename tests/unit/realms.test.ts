@@ -74,6 +74,25 @@ describe("realm_get", () => {
     expect(JSON.stringify(result)).not.toMatch(/hunter2|smtp/);
   });
 
+  it("returns only allowlisted keys of a full representation", async () => {
+    h = await startHarness();
+    h.kc.realms.findOne.mockResolvedValue({
+      realm: "shop",
+      identityProviders: [{ config: { clientSecret: "IDP-SECRET" } }],
+      attributes: { a: "b" },
+      smtpServer: { password: "p" },
+      components: {},
+      clients: [],
+      users: [],
+      keycloakVersion: "x",
+      browserSecurityHeaders: {},
+      clientPolicies: {},
+      otpPolicyInitialCounter: 0,
+    });
+    const result = await h.call("realm_get", { realm: "shop" });
+    expect(Object.keys(result.structuredContent ?? {})).toEqual(["realm"]);
+  });
+
   it("reports an unknown realm", async () => {
     h = await startHarness();
     h.kc.realms.findOne.mockResolvedValue(undefined);

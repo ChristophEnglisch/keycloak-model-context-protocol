@@ -81,11 +81,25 @@ describe("prompts", () => {
     );
   });
 
-  it("rejects realms outside the allowlist", async () => {
+  const promptArgs: [string, Record<string, string>][] = [
+    ["onboard_employee", { username: "u", email: "u@example.org", firstName: "F", lastName: "L" }],
+    ["offboard_employee", { username: "u" }],
+    ["audit_realm_security", {}],
+    ["investigate_failed_logins", {}],
+  ];
+
+  it.each(promptArgs)("%s rejects realms outside the allowlist", async (name, args) => {
     h = await startHarness({ allowedRealms: ["shop"] });
     await expect(
-      h.client.getPrompt({ name: "audit_realm_security", arguments: { realm: "other" } }),
+      h.client.getPrompt({ name, arguments: { realm: "other", ...args } }),
     ).rejects.toThrow(/not permitted/);
+  });
+
+  it.each(promptArgs.slice(0, 2))("%s refuses the master realm", async (name, args) => {
+    h = await startHarness();
+    await expect(
+      h.client.getPrompt({ name, arguments: { realm: "master", ...args } }),
+    ).rejects.toThrow(/ALLOW_MASTER_WRITE/);
   });
 
   it("completes realm names filtered by allowlist and prefix", async () => {
@@ -101,6 +115,16 @@ describe("prompts", () => {
       argument: { name: "realm", value: "sh" },
     });
     expect(narrowed.completion.values).toEqual(["shop"]);
+  });
+
+  it("drops realms outside the allowlist even when the prefix matches", async () => {
+    h = await startHarness({ allowedRealms: ["shop"] });
+    h.kc.realms.find.mockResolvedValue([{ realm: "shop" }, { realm: "sales" }]);
+    const res = await h.client.complete({
+      ref: { type: "ref/prompt", name: "onboard_employee" },
+      argument: { name: "realm", value: "s" },
+    });
+    expect(res.completion.values).toEqual(["shop"]);
   });
 
   it("caps completions at 20", async () => {
