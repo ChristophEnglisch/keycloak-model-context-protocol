@@ -161,7 +161,7 @@ Arguments and result data are not logged, so there is no personal data and no fr
 - [ ] Secrets only in the client's `env` block or a secret store; no `.env` or client config in version control
 - [ ] Keycloak admin events enabled in the target realm; stderr collected where you need an audit trail
 - [ ] Brute-force detection enabled in the auth realm so repeated failed logins do not go unnoticed
-- [ ] Version pinned (`keycloak-model-context-protocol@1.0.0`) instead of an unpinned `npx` call; provenance checked with `npm audit signatures` after installing
+- [ ] Version pinned to the major (`keycloak-model-context-protocol@1`, as in all examples) or to an exact release from the [changelog](../CHANGELOG.md) instead of an unpinned `npx` call; provenance checked with `npm audit signatures` after installing
 - [ ] First run against a test realm
 - [ ] Secret rotation planned (client secret), and a way to disable the service account quickly
 

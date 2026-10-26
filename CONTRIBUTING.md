@@ -68,7 +68,7 @@ Releases are cut by [release-please](https://github.com/googleapis/release-pleas
 
 ## Dependency updates
 
-[Renovate](https://docs.renovatebot.com/) keeps dependencies, GitHub Actions and the newest tested Keycloak version current ([`renovate.json`](renovate.json)). It opens pull requests on Monday mornings for releases at least three days old; security fixes come right away. Minor, patch and digest updates and the weekly lockfile refresh merge themselves once CI is green. Major updates and a new Keycloak minor wait for a review. Runtime dependency updates use the `deps:` commit type, which appears in the changelog and triggers a patch release. `@types/node` stays on the oldest supported Node major. The "Dependency Dashboard" issue lists pending and held-back updates.
+[Renovate](https://docs.renovatebot.com/) keeps dependencies, GitHub Actions and the newest tested Keycloak version current ([`renovate.json`](renovate.json)). It opens pull requests on Monday mornings for releases at least three days old; security fixes come as soon as the fixed release is one day old. Minor and patch updates merge themselves once CI is green. Security fixes, major updates, pin and digest updates, the weekly lockfile refresh, anything that touches the release workflow and a new Keycloak minor wait for a review. Runtime dependency updates use the `deps:` commit type, which appears in the changelog and triggers a patch release. `@types/node` stays on the oldest supported Node major. The "Dependency Dashboard" issue lists pending and held-back updates.
 
 ## Versioning policy (Semver)
 

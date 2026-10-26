@@ -7,13 +7,15 @@
   "rangeStrategy": "bump",
   "minimumReleaseAge": "3 days",
   "osvVulnerabilityAlerts": true,
+  "dependencyDashboard": true,
+  "dependencyDashboardOSVVulnerabilitySummary": "all",
   "vulnerabilityAlerts": {
-    "minimumReleaseAge": null,
-    "automerge": true
+    "minimumReleaseAge": "1 day",
+    "automerge": false
   },
   "lockFileMaintenance": {
     "enabled": true,
-    "automerge": true
+    "automerge": false
   },
   "customManagers": [
     {
@@ -42,9 +44,19 @@
       "semanticCommitScope": null
     },
     {
-      "description": "Merge non-major updates once 'CI result' is green: unit, integration (real Keycloak) and pack smoke tests guard them. Majors stay manual.",
-      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "description": "Merge minor and patch updates once they are three days old and 'CI result' is green: unit, integration (real Keycloak) and pack smoke tests guard them. Majors stay manual.",
+      "matchUpdateTypes": ["minor", "patch"],
       "automerge": true
+    },
+    {
+      "description": "Pin and digest updates wait for a review: the release-age check does not apply to pins, and a digest update dates from the original tag, so a moved tag would pass at once.",
+      "matchUpdateTypes": ["pin", "digest"],
+      "automerge": false
+    },
+    {
+      "description": "The release workflow holds the publishing rights and no CI job runs its actions, so every change to it waits for a review.",
+      "matchFileNames": [".github/workflows/release.yml"],
+      "automerge": false
     },
     {
       "description": "Node versions (engines, .nvmrc, CI matrix) are a support decision and change together by hand.",

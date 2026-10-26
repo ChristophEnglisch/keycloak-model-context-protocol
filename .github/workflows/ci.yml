@@ -98,7 +98,7 @@ jobs:
               scripts/*|biome.json|docs/tools-reference.md)
                 lint=true ;;
               # Nothing in CI reads these.
-              docs/*|*.md|LICENSE|.editorconfig|.env.example|.gitignore|.nvmrc|docker-compose.yml|server.json|release-please-config.json|.release-please-manifest.json|.github/ISSUE_TEMPLATE/*|renovate.json|.github/workflows/release.yml)
+              docs/*|*.md|LICENSE|.editorconfig|.env.example|.gitignore|.nvmrc|docker-compose.yml|server.json|release-please-config.json|.release-please-manifest.json|.github/ISSUE_TEMPLATE/*|renovate.json|.github/workflows/release.yml|.github/workflows/codeql.yml)
                 ;;
               # Unknown path: rather run too much than miss something.
               *)

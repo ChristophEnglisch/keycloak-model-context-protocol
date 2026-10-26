@@ -1,6 +1,6 @@
 # MCP client configuration
 
-The server is a standard **stdio** MCP server, started with `npx -y keycloak-model-context-protocol` (Node.js 22 or newer). All snippets use the recommended `client_credentials` login with a service-account client; see [getting-started.md](getting-started.md) for creating it and [configuration.md](configuration.md) for every variable.
+The server is a standard **stdio** MCP server, started with `npx -y keycloak-model-context-protocol@1` (Node.js 22 or newer). All snippets use the recommended `client_credentials` login with a service-account client; see [getting-started.md](getting-started.md) for creating it and [configuration.md](configuration.md) for every variable.
 
 Common placeholders:
 
@@ -32,7 +32,7 @@ Edit `claude_desktop_config.json` (Settings > Developer > Edit Config; macOS: `~
   "mcpServers": {
     "keycloak": {
       "command": "npx",
-      "args": ["-y", "keycloak-model-context-protocol"],
+      "args": ["-y", "keycloak-model-context-protocol@1"],
       "env": {
         "KEYCLOAK_URL": "https://keycloak.example.com",
         "KEYCLOAK_AUTH_REALM": "demo",
@@ -50,7 +50,7 @@ Claude Desktop passes `env` values literally, so the secret sits in this file. R
 #!/bin/sh
 # ~/bin/keycloak-mcp.sh   (chmod +x)
 export KEYCLOAK_CLIENT_SECRET="$(security find-generic-password -s keycloak-mcp -w)"
-exec npx -y keycloak-model-context-protocol
+exec npx -y keycloak-model-context-protocol@1
 ```
 
 ```json
@@ -71,7 +71,7 @@ exec npx -y keycloak-model-context-protocol
 Notes:
 
 - Claude Desktop starts GUI-launched processes with a minimal `PATH`. If `npx` is not found, use the absolute path (for example from `which npx`) as `command`.
-- On Windows, if `npx` cannot be started directly, use `"command": "cmd"` with `"args": ["/c", "npx", "-y", "keycloak-model-context-protocol"]`.
+- On Windows, if `npx` cannot be started directly, use `"command": "cmd"` with `"args": ["/c", "npx", "-y", "keycloak-model-context-protocol@1"]`.
 - For a local build use `"command": "node"` and `"args": ["/absolute/path/to/dist/index.js"]`.
 - Prompts show up in the attachment menu of a chat; resources can be attached from the same menu.
 
@@ -85,7 +85,7 @@ claude mcp add --transport stdio \
   --env KEYCLOAK_AUTH_REALM=demo \
   --env KEYCLOAK_CLIENT_ID=mcp-admin \
   --env KEYCLOAK_CLIENT_SECRET='${KEYCLOAK_CLIENT_SECRET}' \
-  keycloak -- npx -y keycloak-model-context-protocol
+  keycloak -- npx -y keycloak-model-context-protocol@1
 ```
 
 Keep the single quotes around `'${KEYCLOAK_CLIENT_SECRET}'`: the literal `${...}` is stored in the configuration and expanded by Claude Code when it starts the server, so the secret itself is never written to the config. The variable has to exist in the shell from which you start `claude`.
@@ -113,7 +113,7 @@ Create `.vscode/mcp.json` in the workspace (or use the user-level MCP configurat
     "keycloak": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "keycloak-model-context-protocol"],
+      "args": ["-y", "keycloak-model-context-protocol@1"],
       "env": {
         "KEYCLOAK_URL": "https://keycloak.example.com",
         "KEYCLOAK_AUTH_REALM": "demo",
@@ -137,7 +137,7 @@ Create `.cursor/mcp.json` in the project (or `~/.cursor/mcp.json` globally). Val
     "keycloak": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "keycloak-model-context-protocol"],
+      "args": ["-y", "keycloak-model-context-protocol@1"],
       "env": {
         "KEYCLOAK_URL": "https://keycloak.example.com",
         "KEYCLOAK_AUTH_REALM": "demo",
@@ -158,7 +158,7 @@ Any MCP client that can start a stdio server works. Provide:
 | Field | Value |
 | --- | --- |
 | Command | `npx` |
-| Arguments | `-y keycloak-model-context-protocol` |
+| Arguments | `-y keycloak-model-context-protocol@1` |
 | Transport | stdio |
 | Environment | `KEYCLOAK_URL`, `KEYCLOAK_AUTH_REALM`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET` |
 
@@ -169,7 +169,7 @@ KEYCLOAK_URL=https://keycloak.example.com \
 KEYCLOAK_AUTH_REALM=demo \
 KEYCLOAK_CLIENT_ID=mcp-admin \
 KEYCLOAK_CLIENT_SECRET='<client-secret>' \
-npx -y keycloak-model-context-protocol
+npx -y keycloak-model-context-protocol@1
 ```
 
 The process then waits for JSON-RPC on stdin; logs go to stderr. Interactive testing is easier with the [MCP Inspector](getting-started.md#4-test-with-the-mcp-inspector).
