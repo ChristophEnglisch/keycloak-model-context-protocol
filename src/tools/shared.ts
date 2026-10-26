@@ -1,7 +1,12 @@
 import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { Config } from "../config.js";
-import { assertPathSegment, assertRealmAllowed, requireConfirmation } from "../guards.js";
+import {
+  assertPathSegment,
+  assertRealmAllowed,
+  requireConfirmation,
+  resolveWriteRealm,
+} from "../guards.js";
 import { mapKeycloakError, type ToolError } from "../keycloak/errors.js";
 import type { KeycloakGateway } from "../keycloak/gateway.js";
 import type { Logger } from "../logging.js";
@@ -206,7 +211,8 @@ const PATH_SEGMENT_FIELDS = new Set(["realm", "id", "userId", "groupId"]);
 
 /**
  * Builds a tool with all cross-cutting behaviour applied uniformly:
- * annotations, realm guards (allowlist, master write protection), path segment
+ * annotations, realm guards (allowlist, master write protection; for writes
+ * applied to the realm Keycloak resolves the name to), path segment
  * validation, preview and confirmation for sensitive and destructive tools,
  * error mapping to isError,
  * and one audit log line per call (no arguments or PII logged).
@@ -250,14 +256,20 @@ export function defineTool<I extends z.ZodObject, O extends z.ZodObject>(
           const { confirm, ...rest } = rawArgs as z.infer<I> & Auditable;
           // Handlers and previews never see `confirm`, so it cannot leak into a request body.
           const args = rest as z.infer<I> & Auditable;
-          const realm = typeof args.realm === "string" ? args.realm : undefined;
+          let realm = typeof args.realm === "string" ? args.realm : undefined;
           let outcome = "ok";
           try {
             for (const key of pathKeys) {
               const value = (args as Record<string, unknown>)[key];
               if (typeof value === "string") assertPathSegment(value, key);
             }
-            if (realm !== undefined) assertRealmAllowed(ctx.config, realm, { write });
+            if (realm !== undefined && write) {
+              // Previews, handlers and the audit line use the name Keycloak resolved.
+              realm = (await resolveWriteRealm(ctx, realm)).name;
+              args.realm = realm;
+            } else if (realm !== undefined) {
+              assertRealmAllowed(ctx.config, realm, { write: false });
+            }
             let executed: { preview: string; confirmed: boolean } | undefined;
             if (confirmable && preview) {
               // Always computed, also with confirm: true on the first call, so

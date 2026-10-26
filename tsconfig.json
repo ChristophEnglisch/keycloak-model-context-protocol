@@ -16,6 +16,12 @@
     "verbatimModuleSyntax": true,
     "noEmit": true
   },
-  "include": ["src/**/*", "tests/**/*", "vitest.config.ts", "vitest.integration.config.ts"],
+  "include": [
+    "src/**/*",
+    "tests/**/*",
+    "vitest.config.ts",
+    "vitest.integration.config.ts",
+    "vitest.integration-mysql.config.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

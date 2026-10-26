@@ -16,13 +16,14 @@ cp .env.example .env   # only for manual runs against your own Keycloak
 
 ## Scripts
 
-| Script                     | Purpose                                                           |
-| -------------------------- | ----------------------------------------------------------------- |
-| `npm run lint`             | Biome lint and format check                                       |
-| `npm run typecheck`        | TypeScript type check                                             |
-| `npm test`                 | Unit tests (Vitest)                                               |
-| `npm run test:integration` | Integration tests against a real Keycloak (Docker/Testcontainers) |
-| `npm run build`            | Compile to `dist/`                                                |
+| Script                           | Purpose                                                           |
+| -------------------------------- | ----------------------------------------------------------------- |
+| `npm run lint`                   | Biome lint and format check                                       |
+| `npm run typecheck`              | TypeScript type check                                             |
+| `npm test`                       | Unit tests (Vitest)                                               |
+| `npm run test:integration`       | Integration tests against a real Keycloak (Docker/Testcontainers) |
+| `npm run test:integration:mysql` | Realm and role name tests against Keycloak on MySQL 8.4           |
+| `npm run build`                  | Compile to `dist/`                                                |
 
 Run lint, typecheck, test and build before opening a PR.
 

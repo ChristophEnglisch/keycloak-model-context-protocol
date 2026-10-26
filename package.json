@@ -41,6 +41,7 @@
     "test": "vitest run tests/unit",
     "test:watch": "vitest tests/unit",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:integration:mysql": "vitest run --config vitest.integration-mysql.config.ts",
     "prepublishOnly": "npm run clean && npm run build && npm test",
     "test:smoke": "npm run build && node tests/smoke/pack-smoke.mjs",
     "test:all": "npm test && npm run test:integration && npm run test:smoke",

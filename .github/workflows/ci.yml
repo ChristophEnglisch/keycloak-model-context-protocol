@@ -85,7 +85,7 @@ jobs:
                 lint=true unit=true integration=true ;;
               tests/unit/*|vitest.config.ts)
                 lint=true unit=true ;;
-              tests/integration/*|vitest.integration.config.ts)
+              tests/integration/*|vitest.integration.config.ts|vitest.integration-mysql.config.ts)
                 lint=true integration=true ;;
               tests/smoke/*)
                 lint=true smoke=true ;;
@@ -199,6 +199,27 @@ jobs:
       - run: npm ci
       - run: npm run test:integration
 
+  integration-mysql:
+    name: Integration (Keycloak 26.8 on MySQL 8.4)
+    needs: [changes, lint-typecheck, unit]
+    # Realm and role names against a case- and accent-insensitive database collation.
+    # Runs only tests/integration/name-resolution.test.ts, so it stays small.
+    if: ${{ !cancelled() && !failure() && needs.changes.outputs.integration == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      KEYCLOAK_VERSION: "26.8"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:integration:mysql
+
   integration-compat:
     name: Integration compat (Node 24, Keycloak ${{ matrix.keycloak }})
     needs: [changes, lint-typecheck, unit]
@@ -267,7 +288,8 @@ jobs:
   ci-result:
     name: CI result
     # integration-compat is left out on purpose: its probes may fail.
-    needs: [changes, lint-typecheck, diagrams, unit, integration, build-smoke, audit]
+    needs:
+      [changes, lint-typecheck, diagrams, unit, integration, integration-mysql, build-smoke, audit]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
