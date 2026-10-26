@@ -40,7 +40,7 @@ Boolean values accept `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off` (case-inse
 
 | Variable | Required | Default | Secret | Description | Example |
 | --- | :---: | --- | :---: | --- | --- |
-| `KEYCLOAK_URL` | yes | none | no | Base URL of the Keycloak server (`http` or `https`). Trailing slashes are removed. Include the path prefix if Keycloak is served under one. | `https://keycloak.example.com` |
+| `KEYCLOAK_URL` | yes | none | no | Base URL of the Keycloak server (`http` or `https`). Trailing slashes are removed. Include the path prefix if Keycloak is served under one. Must not contain a user name or password (`user:password@host`); see [URL rules](#url-rules). | `https://keycloak.example.com` |
 | `KEYCLOAK_AUTH_REALM` | no | `master` | no | Realm in which the login client or user lives. This is **not** the realm you administer; tools take the target realm as an argument. | `demo` |
 | `KEYCLOAK_GRANT_TYPE` | no | auto-detected | no | `client_credentials` or `password`. See [Grant auto-detection](#grant-auto-detection). | `client_credentials` |
 | `KEYCLOAK_CLIENT_ID` | yes for `client_credentials`; no for `password` | `admin-cli` for `password`, none otherwise | no | OAuth2 client used for login. | `mcp-admin` |
@@ -49,15 +49,22 @@ Boolean values accept `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off` (case-inse
 | `KEYCLOAK_PASSWORD` | yes for `password` | none | **yes** | Password of that user. | `<password>` |
 | `KEYCLOAK_ADMIN` | no | none | no | **Deprecated** alias of `KEYCLOAK_USERNAME`. | |
 | `KEYCLOAK_ADMIN_PASSWORD` | no | none | **yes** | **Deprecated** alias of `KEYCLOAK_PASSWORD`. | |
-| `KEYCLOAK_MCP_TOOLSETS` | no | `core,groups,roles` | no | Comma-separated toolsets to enable, or `all`. | `core,groups,roles,events` |
+| `KEYCLOAK_MCP_TOOLSETS` | no | `core,groups,roles` | no | Comma-separated toolsets to enable, or `all`. A value without any entry (for example `,`) is a configuration error. | `core,groups,roles,events` |
 | `KEYCLOAK_MCP_READ_ONLY` | no | `false` | no | Register only tools of kind *read*. Write and destructive tools do not exist for the client. | `true` |
-| `KEYCLOAK_MCP_REALMS` | no | empty (all realms) | no | Comma-separated allowlist of target realms. Applies to tools, resources, prompts and completions. | `demo,staging` |
+| `KEYCLOAK_MCP_REALMS` | no | empty (all realms) | no | Comma-separated allowlist of target realms, compared by exact name. Applies to tools, resources, prompts and completions. A value without any entry (for example `,`) is a configuration error. | `demo,staging` |
 | `KEYCLOAK_MCP_ALLOW_MASTER_WRITE` | no | `false` | no | Allow write and destructive tools in the `master` realm. | `false` |
 | `KEYCLOAK_MCP_REQUIRE_CONFIRMATION` | no | `true` | no | Destructive and sensitive tools require `confirm: true`. `false` turns this off, except for grants of administrative rights, profile changes and action e-mails for accounts with administrative rights, and changes to the server's own account. | `true` |
 | `KEYCLOAK_MCP_TIMEOUT_MS` | no | `30000` | no | HTTP timeout for requests to Keycloak, in milliseconds (integer, at least 1). | `15000` |
 | `KEYCLOAK_MCP_LOG_LEVEL` | no | `info` | no | `debug`, `info`, `warn` or `error`. Logs go to stderr. | `warn` |
 
 `NODE_EXTRA_CA_CERTS` is a Node.js variable, not a server setting. See [TLS](#tls-and-custom-certificate-authorities).
+
+Other variables starting with `KEYCLOAK_` are not settings of this server. They are ignored with a warning that names the closest known variable, for example `Unknown variable KEYCLOAK_MCP_READONLY is ignored; did you mean KEYCLOAK_MCP_READ_ONLY?`. Only names are logged, never values.
+
+### URL rules
+
+- **No credentials in the URL.** A `KEYCLOAK_URL` with a user name or password (`https://user:password@host`) is rejected at startup. The error message does not repeat the URL. Configure credentials with the variables above.
+- **Plain `http://`** works, but for any host other than a loopback address the server logs a warning, because tokens and credentials travel unencrypted. Loopback means `localhost`, names ending in `.localhost`, IPv4 addresses in `127.0.0.0/8` and `::1`. Host names that only start with `127.`, such as `127.example.com`, are not loopback and get the warning.
 
 ## Authentication
 
@@ -86,6 +93,12 @@ KEYCLOAK_AUTH_REALM=master          # realm of the user
 
 Requirements: the client must allow *Direct access grants* (true for `admin-cli`), and the account must not require OTP or other required actions, otherwise login fails with `invalid_grant`.
 
+Behaviour specific to the password grant:
+
+- **Superuser warning.** If the user turns out to be an administrator of the `master` realm (realm role `admin`), the server logs one warning after the first login. Such an account can change every realm; prefer `client_credentials` with only the roles you need.
+- **Brute force detection.** A rejected login counts as a failed attempt in Keycloak and can lock the user. See [rejected logins](#rejected-logins).
+- **Logout.** When the server stops (SIGINT, SIGTERM or the client closing stdin), it ends its Keycloak session. The logout gives up after 2 seconds and never delays the shutdown further. To stop a running server from Keycloak, disable the user or change its password; ending its sessions is not enough, because the server logs in again.
+
 ### Grant auto-detection
 
 If `KEYCLOAK_GRANT_TYPE` is not set, the grant is derived from what you provide:
@@ -96,7 +109,13 @@ If `KEYCLOAK_GRANT_TYPE` is not set, the grant is derived from what you provide:
 
 If you set both a client secret and a username, the secret wins; set `KEYCLOAK_GRANT_TYPE=password` explicitly to use the user instead (the secret is then sent as the client secret, for confidential clients). Missing parts for the chosen grant (for example no `KEYCLOAK_CLIENT_ID` with `client_credentials`) are reported as configuration errors.
 
-Tokens are cached and refreshed shortly before they expire. On an HTTP 401 from Keycloak the server logs in again once and retries the call. Login happens on the first tool call, so the server starts even if Keycloak is not reachable yet.
+Tokens are cached and renewed shortly before they expire: the password grant uses its refresh token, `client_credentials` (which has none) logs in again. On an HTTP 401 from Keycloak the server logs in again once and retries the call. Login happens on the first tool call, so the server starts even if Keycloak is not reachable yet.
+
+### Rejected logins
+
+When Keycloak rejects the credentials, the server does not try again on every tool call. It waits 30 seconds before the next login attempt, and doubles the wait after each further rejection, up to 10 minutes. Tool calls in between fail at once with the last login error and the remaining wait. A successful login resets the wait; a restart does too. Network errors and timeouts do not start a wait.
+
+With the password grant, the error also says that the account may be locked by Keycloak's brute force detection: Keycloak answers a locked account like a wrong password, so the server cannot tell the two apart. See [troubleshooting](troubleshooting.md#account-locked-by-brute-force-detection).
 
 ### Legacy aliases and deprecation
 
@@ -131,9 +150,9 @@ Prompts that need tools from a non-default toolset (`audit_realm_security`, `inv
 | --- | --- |
 | **Read-only** (`KEYCLOAK_MCP_READ_ONLY=true`) | Only tools of kind *read* are registered; the 10 write and destructive tools never appear in `tools/list`. This is the strongest control and independent of Keycloak roles. |
 | **Realm allowlist** (`KEYCLOAK_MCP_REALMS`) | Calls for a realm outside the list are rejected before any request is sent. `realm_list`, the `keycloak://realms` resource and prompt completion only show allowed realms. Empty means every realm. |
-| **`master` write protection** (`KEYCLOAK_MCP_ALLOW_MASTER_WRITE=false`) | Write and destructive tools reject the realm `master` (case-insensitive). Reads still work. Set to `true` only if you really administer `master` through the assistant. |
+| **`master` write protection** (`KEYCLOAK_MCP_ALLOW_MASTER_WRITE=false`) | Write and destructive tools reject the realm `master` (case-insensitive). Realm names are resolved by Keycloak before guards apply: before a write, the server asks Keycloak which realm the name refers to and applies this protection and the allowlist to that realm, so other spellings that Keycloak's database treats as `master` are rejected too. The write then uses the name Keycloak returned. Reads still work. Set to `true` only if you really administer `master` through the assistant. |
 | **Confirmation** (`KEYCLOAK_MCP_REQUIRE_CONFIRMATION=true`) | Destructive tools (`user_delete`, `user_group_remove`, `user_role_revoke`, `user_logout`) and sensitive tools (`user_create`, `user_update`, `user_send_actions_email`, `user_group_add`, `user_role_assign`, `user_brute_force_unlock`) first return a preview and change nothing; the assistant must repeat the call with `confirm: true` after you approved. Grants of administrative rights, also through composite roles and parent groups, `user_update` and `user_send_actions_email` for accounts with administrative rights, and changes to the server's own account always need confirmation; see [security](security.md#sensitive-writes). |
-| **Path-segment validation** | Realm names and IDs containing `/`, `\`, `..` or control characters are rejected, so arguments cannot redirect a request to another API path. |
+| **Path-segment validation** | Realm names, IDs and role names containing `/`, `\`, `..`, control characters or invisible characters (zero-width characters, bidi controls, soft hyphens and similar), or starting or ending with whitespace, are rejected, so arguments cannot redirect a request to another API path or hide what they refer to. Other Unicode, such as accented realm names, is allowed. |
 
 > [!WARNING]
 > `KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false` removes the preview step for ordinary changes. Your MCP client may still ask you to approve each tool call, but the server will no longer enforce it. Grants of administrative rights, profile changes and action e-mails for accounts with administrative rights, and changes to the server's own account still need `confirm: true`. Keep the default unless you run unattended automation in a disposable environment.
@@ -141,7 +160,9 @@ Prompts that need tools from a non-default toolset (`audit_realm_security`, `inv
 ## Timeouts and logging
 
 - **`KEYCLOAK_MCP_TIMEOUT_MS`** limits every HTTP request to Keycloak (login included). On expiry the tool returns an error that names the timeout instead of hanging. Raise it for slow, remote or heavily loaded Keycloak instances.
-- **Logs** are written to **stderr**, because stdout carries the MCP protocol. Format: `<ISO time> <LEVEL> <message> {json fields}`. At `info` you get one line at startup (version, URL, auth realm, grant type, toolsets) and one `tool_call` or `resource_read` line per call with tool name, realm, outcome and duration. **Arguments and results are not logged**, so no user data ends up in logs. Field names containing `secret`, `password`, `token`, `authorization` or `credential` are redacted, and the configured secret values are masked anywhere in a line.
+- **Logs** are written to **stderr**, because stdout carries the MCP protocol. Format: `<ISO time> <LEVEL> <message> {json fields}`. At `info` you get one line at startup and one `tool_call` or `resource_read` line per call with tool name, realm, outcome and duration. **Arguments and results are not logged**, so no user data ends up in logs. Field names containing `secret`, `password`, `token`, `authorization` or `credential` are redacted, and the configured secret values are masked anywhere in a line, also in their URL-encoded and JSON-escaped forms.
+- **The startup line** shows version, URL, auth realm and grant type, and the complete protection status: `readOnly`, `toolsets`, `allowedRealms` (`"all"` when no allowlist is set), `requireConfirmation` and `allowMasterWrite`. Example: `INFO keycloak-model-context-protocol started {"version":"1.1.0","url":"https://kc.example.com","authRealm":"demo","grantType":"client_credentials","readOnly":false,"toolsets":["core","groups","roles"],"allowedRealms":["demo"],"requireConfirmation":true,"allowMasterWrite":false}`.
+- **Startup warnings** (level `warn`) point out unknown `KEYCLOAK_*` variables, deprecated aliases, plain `http://` to a remote host, and write tools that are enabled without `KEYCLOAK_MCP_REALMS`. After the first login, the password grant warns once if it runs as a `master` superuser. The defaults stay as they are; the warnings only make them visible.
 - Use `debug` for troubleshooting (for example login and token-refresh decisions). Where the logs show up depends on the client: Claude Desktop writes them to its MCP log files, the MCP Inspector shows them in its notifications pane.
 
 ## Minimal roles per tool

@@ -20,6 +20,10 @@ flowchart TD
 |---|---|
 | `Invalid configuration:` and the process exits | [Start without configuration](#server-does-not-start) |
 | `Authentication against Keycloak realm '...' failed (HTTP 400/401)` | [Authentication errors](#authentication-errors-401-invalid_grant) |
+| `No new login attempt for <n> s` | [Rejected logins](#login-attempts-are-paused) |
+| `... may be locked by brute force detection ...` | [Locked account](#account-locked-by-brute-force-detection) |
+| `Realm '...' does not exist. Nothing was changed.` | [404](#404-not-found) |
+| `Unknown variable KEYCLOAK_... is ignored` | [Startup warnings](#startup-warnings) |
 | `Keycloak denied the operation (HTTP 403)` | [403](#403-keycloak-denied-the-operation) |
 | `Not found (HTTP 404)` | [404](#404-not-found) |
 | `Conflict (HTTP 409)` | [409](#409-conflict) |
@@ -52,6 +56,8 @@ Invalid configuration:
 | Message | Cause |
 |---|---|
 | `KEYCLOAK_URL: must be a valid http(s) URL` | The URL is malformed or uses another scheme. |
+| `KEYCLOAK_URL: must not contain a user name or password (user:password@host).` | The URL carries credentials. Remove them and use the credential variables; the message deliberately does not repeat the URL. |
+| `KEYCLOAK_MCP_REALMS: contains no entries; ...` (same for `KEYCLOAK_MCP_TOOLSETS`) | The list consists only of commas or blanks, for example `,` from two empty shell variables. Leave the variable unset or name at least one entry. |
 | `KEYCLOAK_CLIENT_ID: is required for the client_credentials grant` | Grant is `client_credentials` (explicit, or because a client secret is set) but no client ID. |
 | `KEYCLOAK_CLIENT_SECRET: is required for the client_credentials grant` | Client ID is set, secret is missing. |
 | `KEYCLOAK_USERNAME: is required for the password grant` / `KEYCLOAK_PASSWORD: is required for the password grant` | Grant is `password` but username or password is missing. |
@@ -71,6 +77,19 @@ The server logs `keycloak-model-context-protocol started` to stderr and then wai
 
 If the log shows `KEYCLOAK_ADMIN is deprecated; use KEYCLOAK_USERNAME instead.` (or the same for `KEYCLOAK_ADMIN_PASSWORD`), rename the variable. See [Migration from 0.0.x](migration-1.0.md).
 
+### Startup warnings
+
+The server starts, but logs `WARN` lines before the startup line. None of them stops the server; each points at a setting that probably does not do what you intended.
+
+| Warning | Meaning and fix |
+|---|---|
+| `Unknown variable KEYCLOAK_MCP_READONLY is ignored; did you mean KEYCLOAK_MCP_READ_ONLY?` | A `KEYCLOAK_*` variable the server does not know, usually a typo. The setting you meant is **not** active. Rename it as suggested. Variables meant for other programs (for example `KEYCLOAK_VERSION` in a compose file) can be ignored or kept out of the server's environment. |
+| `KEYCLOAK_URL uses plain http:// for the remote host '<host>'` | Tokens and credentials travel unencrypted. Use `https://`. Only `localhost`, `*.localhost`, `127.0.0.0/8` and `::1` count as local. |
+| `<n> write tools are enabled and KEYCLOAK_MCP_REALMS is not set` | Write tools work in every realm the account can manage. Set `KEYCLOAK_MCP_REALMS`, or `KEYCLOAK_MCP_READ_ONLY=true` if you only need to read. |
+| `Signed in with the password grant as a superuser of the master realm` | Logged once after the first login. The account can change every realm. Prefer a service account with `client_credentials` and only the roles you need ([configuration](configuration.md#authentication)). |
+
+The startup line itself lists the protection settings in effect (`readOnly`, `toolsets`, `allowedRealms`, `requireConfirmation`, `allowMasterWrite`), so you can check them there.
+
 ## Authentication errors (401, invalid_grant)
 
 **Message.**
@@ -86,7 +105,8 @@ The same text appears with `HTTP 400`. The `Keycloak says:` part carries Keycloa
 | `client_credentials` | Wrong client ID or secret (`unauthorized_client`, `Invalid client or Invalid client credentials`) | Copy the secret again from *Clients → your client → Credentials*. |
 | `client_credentials` | *Service accounts roles* is disabled on the client (`unauthorized_client`) | Enable *Service accounts roles* and *Client authentication* on the client. |
 | `client_credentials` | The client exists in another realm than `KEYCLOAK_AUTH_REALM` | Set `KEYCLOAK_AUTH_REALM` to the realm that contains the client. The default is `master`. |
-| `password` | Wrong username or password (`invalid_grant`, `Invalid user credentials`) | Check the credentials. Several failures can lock the account through brute-force detection. |
+| `password` | Wrong username or password, or an account locked by brute force detection (`invalid_grant`, `Invalid user credentials`) | Check the credentials, then the lockout; see [locked account](#account-locked-by-brute-force-detection). |
+| `password` | Account disabled (`Account disabled`) | Enable the user again. Brute force detection with *permanent lockout* disables accounts too. |
 | `password` | Account has required actions or MFA (`invalid_grant`, `Account is not fully set up`) | Use a dedicated account without required actions, or switch to `client_credentials`. |
 | `password` | Client `admin-cli` has *Direct access grants* disabled, or the client you set needs a secret | Enable direct access grants, or set `KEYCLOAK_CLIENT_ID` (and `KEYCLOAK_CLIENT_SECRET` if the client is confidential). |
 | both | The user or client lives in a realm other than the auth realm | Match `KEYCLOAK_AUTH_REALM` to the realm where the account is defined. |
@@ -94,6 +114,22 @@ The same text appears with `HTTP 400`. The `Keycloak says:` part carries Keycloa
 **Message.** `Authentication realm '<realm>' or the token endpoint was not found (HTTP 404). Check KEYCLOAK_URL and KEYCLOAK_AUTH_REALM.` The realm name is wrong, or the base URL needs or must not have the `/auth` prefix. Keycloak 17+ (Quarkus) serves without `/auth`; older installations and some proxies still use it. Test with `curl <KEYCLOAK_URL>/realms/<realm>/.well-known/openid-configuration`.
 
 **Message after a working period.** `Keycloak rejected the access token (HTTP 401). The credentials may be invalid or the token expired.` The server already retried once with a fresh login. The credentials were probably changed or the client or user disabled in the meantime.
+
+### Login attempts are paused
+
+**Message.** `<login error> No new login attempt for <n> s: after a rejected login the server waits before trying again, so that brute force detection does not lock the account. Restart the server after fixing the configuration.`
+
+**Cause.** Keycloak rejected the credentials shortly before. The server then waits 30 seconds before the next login attempt and doubles the wait after each further rejection, up to 10 minutes, instead of logging in again on every tool call. Network errors and timeouts do not start a wait.
+
+**Fix.** Fix the cause from the login error (credentials, auth realm, locked account) and restart the server; a restart starts without a wait. Without a restart, the next tool call after the wait tries again.
+
+### Account locked by brute force detection
+
+**Message.** The login error of the password grant ends with `If the password is correct, the account may be locked by brute force detection in realm '<realm>': Keycloak reports a locked account like a wrong password.`
+
+**Cause.** With brute force detection enabled in the auth realm, Keycloak locks a user after a number of failed logins. While it is locked, even the correct password is answered with `Invalid user credentials`, so the server cannot tell a lockout from a wrong password and names both. Failed logins elsewhere (for example someone guessing the password of this user) count too.
+
+**Fix.** In the admin console of the auth realm, open *Users*, select the user and check its brute force status; clear the lockout there, or wait until a temporary lockout expires. Then restart the server. To avoid the problem, use `client_credentials`: Keycloak's brute force detection does not lock clients.
 
 ## 403: Keycloak denied the operation
 
@@ -197,21 +233,23 @@ Confirmation required. This would: permanently delete user "<username>" (id <id>
 
 **Cause.** `KEYCLOAK_MCP_REALMS` is set and does not contain the realm.
 
-**Fix.** Add the realm to the comma-separated list (`KEYCLOAK_MCP_REALMS=shop,staging`) and restart, or use a different realm. An empty or unset variable allows all realms. The same check applies to prompts and resources.
+**Fix.** Add the realm to the comma-separated list (`KEYCLOAK_MCP_REALMS=shop,staging`) and restart, or use a different realm. An unset variable allows all realms. The same check applies to prompts and resources.
+
+The list is compared with the exact name. For writes, the server also asks Keycloak which realm the name refers to and checks that realm's stored name against the list. On a database that ignores case or accents (for example MySQL with its default collation), `Shop` may refer to the realm `shop`; such a call is rejected unless the exact name you passed is on the list, so use the realm name exactly as Keycloak shows it.
 
 ## master write protection
 
 **Message.** `Write operations in the 'master' realm are disabled. Set KEYCLOAK_MCP_ALLOW_MASTER_WRITE=true to allow them.`
 
-**Cause.** Write and destructive tools are blocked in `master` by default. Reading is allowed.
+**Cause.** Write and destructive tools are blocked in `master` by default. Reading is allowed. Realm names are resolved by Keycloak before guards apply, so the message also appears for a differently spelled name that Keycloak's database resolves to `master`.
 
 **Fix.** Do the change in a different realm, or set `KEYCLOAK_MCP_ALLOW_MASTER_WRITE=true` if you really need to administer `master` and have a very good reason. This also requires the account to have the roles in `master`.
 
 ## Invalid input
 
-**Message.** `Invalid <label>: must be non-empty and must not contain '/', '\', '..' or control characters.` where `<label>` is `realm`, `id`, `userId` or `groupId`.
+**Message.** `Invalid <label>: must be non-empty and must not contain '/', '\', '..', control or invisible characters, or leading or trailing whitespace.` where `<label>` is `realm`, `id`, `userId`, `groupId` or `role name`.
 
-**Cause.** The value cannot be used as a URL path segment. Usually the model passed a path, a name with a slash, or an empty string instead of an ID.
+**Cause.** The value cannot be used as a URL path segment. Usually the model passed a path, a name with a slash, or an empty string instead of an ID. Invisible characters (zero-width characters, bidi controls, soft hyphens and similar) and surrounding whitespace are rejected because Keycloak may ignore them when it looks a name up, so the name would not show which realm or role is meant.
 
 **Fix.** Look the ID up with the search tool and pass only the ID. Other validation failures (wrong types, `max` above 200, missing required fields, `Provide at least one field to update.`, `Provide exactly one of \`id\` or \`clientId\`.`) are shown by the client as invalid parameters.
 

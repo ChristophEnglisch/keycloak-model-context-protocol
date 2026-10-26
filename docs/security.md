@@ -35,13 +35,17 @@ flowchart TD
     A(["tools/call"]) --> B["1. Schema validation<br/>(Zod, by the SDK)"]
     B -- invalid --> X1["Protocol error<br/>(invalid params)"]
     B --> C["2. Path segment check<br/>realm, id, userId, groupId"]
-    C -- "empty, '/', backslash, '.', '..',<br/>control chars, more than 255 chars" --> E1["isError: Invalid realm / userId ..."]
+    C -- "empty, '/', backslash, '.', '..',<br/>control or invisible chars, surrounding spaces,<br/>more than 255 chars" --> E1["isError: Invalid realm / userId ..."]
     C --> D["3. Realm allowlist<br/>KEYCLOAK_MCP_REALMS"]
     D -- "not in list" --> E2["isError: Realm 'x' is not permitted ..."]
     D --> F["4. master write protection<br/>(sensitive and destructive tools)"]
     F -- "master and not ALLOW_MASTER_WRITE" --> E3["isError: Write operations in the 'master' realm are disabled ..."]
+    F -- "write tool" --> K["4b. Realm resolved by Keycloak<br/>(cached 60 s); steps 3 and 4<br/>again for the stored name and id"]
+    K -- "not in list" --> E2
+    K -- "master" --> E3
+    K -- "no such realm" --> E6["isError: Realm 'x' does not exist ..."]
     F -- "read tool" --> H
-    F -- "sensitive or destructive tool" --> P["5a. Preview<br/>(always computed, also with confirm: true)"]
+    K -- "stored name" --> P["5a. Preview<br/>(always computed, also with confirm: true)"]
     P -- "grant, profile change or action e-mail<br/>for the server's own account" --> E5["isError: Refusing to ..."]
     P --> G{"5b. confirm: true?"}
     G -- "no, and confirmation required<br/>(by config, or unconditional)" --> E4["isError: Confirmation required ...<br/>(preview, nothing changed)"]
@@ -53,6 +57,7 @@ flowchart TD
     E3 --> L
     E4 --> L
     E5 --> L
+    E6 --> L
     I --> L
     J --> L["8. Audit log line tool_call<br/>(finally, always)"]
     L --> R(["Result to client"])
@@ -63,16 +68,19 @@ Notes on the individual steps:
 | Step | Implementation | Behaviour |
 |---|---|---|
 | Schema validation | Zod schemas passed to `registerTool` | Unknown shapes are rejected before the handler runs. Page size is capped (`max` at most 200). |
-| Path segment | `assertPathSegment` | Applied to the input fields `realm`, `id`, `userId` and `groupId`, because they become URL path segments. Rejects empty values, `/`, `\`, `.`, `..`, control characters and values longer than 255 characters. It does not enforce a UUID format. |
+| Path segment | `assertPathSegment` | Applied to the input fields `realm`, `id`, `userId` and `groupId` and to role names, because they become URL path segments. Rejects empty values, `/`, `\`, `.`, `..`, control characters, invisible characters (Unicode default-ignorable code points such as zero-width characters, bidi controls and soft hyphens), unpaired surrogates, leading or trailing whitespace and values longer than 255 characters. Other Unicode is allowed, because Keycloak allows it in names. It does not enforce a UUID format. |
 | Realm allowlist | `assertRealmAllowed` | If `KEYCLOAK_MCP_REALMS` is set, any other realm is refused. Empty means all realms. `realm_list` and the realm resources only show allowed realms. |
 | master protection | `assertRealmAllowed` with `write: true` | `master` (case-insensitive) is read-only unless `KEYCLOAK_MCP_ALLOW_MASTER_WRITE=true`. |
+| Realm resolution | `resolveWriteRealm` | Realm names are resolved by Keycloak before guards apply. For tools that change data the server reads the realm (`GET /admin/realms/{realm}`) and applies the allowlist and the master protection again to the name Keycloak stores, and compares the realm id with the id of `master` where the account can see both. Depending on the database collation, Keycloak may resolve a differently spelled name to an existing realm; the check therefore follows Keycloak, not the string passed in. Preview, handler, result and audit line then use the stored name. Results are cached per name for 60 seconds, so a series of writes costs one extra request per minute and realm. Reads skip this step: the allowlist compares their realm name exactly, which fails closed, and reads in `master` are allowed anyway. |
 | Preview | `preview()` of each tool | Runs for every sensitive and destructive tool, also when the model sets `confirm: true` on its first call; the result then repeats the preview. It resolves the effective administrative rights of a grant and refuses changes to the server's own account (see below). |
 | Confirmation | `requireConfirmation` | Destructive tools (`user_delete`, `user_group_remove`, `user_role_revoke`, `user_logout`) and sensitive tools (`user_create`, `user_update`, `user_send_actions_email`, `user_group_add`, `user_role_assign`, `user_brute_force_unlock`) get an automatic `confirm` parameter and `destructiveHint=true`. Without `confirm: true`, the tool returns the preview and changes nothing. `KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false` turns this off, except for unconditional confirmations: grants of administrative rights, `user_update` and `user_send_actions_email` for accounts with administrative rights, and changes to the server's own account. |
 | Gateway | `KeycloakAdminGateway.run` | The only path to Keycloak. Fixed auth realm, cached token, single-flight refresh, one retry after HTTP 401. The target realm travels only in the request payload. |
 | Error mapping | `mapKeycloakError` | Known failures become short messages with a hint. Stack traces and secrets never reach the client. Unknown errors become a generic message. |
 | Audit log | `ctx.logger.info("tool_call", ...)` | One line per call in `finally`, so guard rejections are logged as well. |
 
-Prompts and resources reuse the same guards: prompts call `guardRealm` (allowlist, plus master protection for write prompts), resources call `assertRealmAllowed` and `assertPathSegment` through `guardedRead`.
+Prompts and resources reuse the same guards: prompts call `guardRealm` (allowlist, plus master protection for write prompts), resources call `assertRealmAllowed` and `assertPathSegment` through `guardedRead`. Prompts only produce text; the tool calls they lead to go through the full chain, including the realm resolution.
+
+Role names work the same way: `user_role_assign` checks the administrative rights of the role Keycloak returns for a name, under the name Keycloak returns, not of the name passed in. The allowlist is bound to realm names, not ids: if a realm is renamed and another realm is created under the old name, the allowlist applies to the new realm.
 
 ### Sensitive writes
 
@@ -187,7 +195,8 @@ The controls above narrow what the server does, but some limits are by design or
 |---|---|
 | `confirm: true` is set by the model, so it is not proof that a human approved the call. The model can even set it on its first call; the server then still computes the preview and returns it with the result, but executes the call. | Use a client that asks before tool calls marked `destructiveHint` (every tool that changes data carries it), and keep that prompt enabled. |
 | Plain `http://` URLs are accepted for any host. For non-loopback hosts the server only logs a warning at startup. | Use `https://` for every Keycloak that is not on localhost. |
-| The password grant is still supported, and the server cannot tell whether the configured account has more rights than it needs. | Use a service account with `client_credentials` and the role profiles from [configuration](configuration.md#recommended-role-profiles). |
+| The defaults are open: writes are enabled, no realm allowlist is set, and the auth realm is `master`. The server warns at startup about unknown variables, write tools without `KEYCLOAK_MCP_REALMS` and a password grant running as `master` superuser, but starts anyway. | Follow the [operations checklist](#operations-checklist) and check the startup line, which lists all protection settings. |
+| The password grant is still supported, and the server cannot tell whether the configured account has more rights than it needs; it only warns about a `master` superuser. A rejected password login counts towards Keycloak's brute force detection, so the server waits between attempts. | Use a service account with `client_credentials` and the role profiles from [configuration](configuration.md#recommended-role-profiles). |
 | Apart from the server's own account there is no protected list of users. Profile changes and action e-mails for accounts with administrative rights always need confirmation; other changes to such accounts (unlock, logout, revoke, remove from group, delete) are named only for the server's own account and otherwise follow the normal confirmation setting. | Limit `manage-users` to realms where this is acceptable, use `KEYCLOAK_MCP_REALMS`, or run with `KEYCLOAK_MCP_READ_ONLY=true`. |
 | Some MCP clients, such as Claude Desktop, store the `env` block, including the client secret, in a plain-text config file. | Use the client's variable expansion or a wrapper script that reads the secret from a keychain; see [clients](clients.md#how-to-handle-the-secret). |
 | Prompt injection through Keycloak data can be reduced, but not prevented. | Keep the blast-radius limits and the human approval step; see [Prompt injection](#prompt-injection). |
