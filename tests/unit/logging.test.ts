@@ -40,3 +40,30 @@ describe("createLogger", () => {
     expect(lines[0]).not.toContain("s3cr3t");
   });
 });
+
+describe("createLogger: encoded secrets", () => {
+  const secret = 'p@ss w/rd+&"x"ü';
+  const forms = [
+    secret,
+    encodeURIComponent(secret),
+    new URLSearchParams({ s: secret }).toString().slice(2),
+    JSON.stringify(secret).slice(1, -1),
+  ];
+
+  it.each(forms)("masks the form %j in messages and fields", (form) => {
+    const lines: string[] = [];
+    const logger = createLogger({ level: "debug", secrets: [secret], write: (l) => lines.push(l) });
+    logger.error(`failed: ${form}`, { detail: form });
+    expect(lines[0]).not.toContain(form);
+    expect(lines[0]).not.toContain("w/rd");
+    expect(lines[0]).not.toContain("w%2Frd");
+  });
+
+  it("masks the JSON-escaped form of a secret inside fields", () => {
+    const lines: string[] = [];
+    const logger = createLogger({ level: "debug", secrets: [secret], write: (l) => lines.push(l) });
+    logger.info("x", { detail: `secret=${secret}` });
+    expect(lines[0]).toContain("***");
+    expect(lines[0]).not.toContain("w/rd");
+  });
+});

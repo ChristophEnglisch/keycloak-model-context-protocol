@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { z } from "zod";
 import { LOG_LEVELS, type LogLevel } from "./logging.js";
 
@@ -59,17 +60,27 @@ const blankToUndefined = (value: unknown): unknown => {
 const optionalString = z.preprocess(blankToUndefined, z.string().optional());
 const flag = (fallback: boolean) =>
   z.preprocess(blankToUndefined, z.stringbool().default(fallback));
+/** Unset or blank means "not configured"; a value without any entry (e.g. ",") is an error. */
 const commaList = z.preprocess(
   blankToUndefined,
   z
     .string()
     .optional()
-    .transform((value) =>
-      (value ?? "")
+    .transform((value, ctx) => {
+      if (value === undefined) return [];
+      const items = value
         .split(",")
         .map((item) => item.trim())
-        .filter((item) => item.length > 0),
-    ),
+        .filter((item) => item.length > 0);
+      if (items.length === 0) {
+        ctx.issues.push({
+          code: "custom",
+          input: value,
+          message: "contains no entries; leave it unset or name at least one entry",
+        });
+      }
+      return items;
+    }),
 );
 
 const EnvSchema = z.object({
@@ -113,6 +124,59 @@ const EnvSchema = z.object({
   ),
 });
 
+/** Every environment variable this server reads. */
+export const KNOWN_VARIABLES: readonly string[] = Object.keys(EnvSchema.shape);
+
+function editDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) {
+      current[j] = Math.min(
+        (previous[j] ?? 0) + 1,
+        (current[j - 1] ?? 0) + 1,
+        (previous[j - 1] ?? 0) + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    previous = current;
+  }
+  return previous[b.length] ?? 0;
+}
+
+/** The known variable closest to `name`, if it is close enough to be a likely typo. */
+export function suggestVariable(name: string): string | undefined {
+  // Compare without prefix and underscores too, so KEYCLOAK_READONLY finds KEYCLOAK_MCP_READ_ONLY.
+  const core = (v: string) => v.replace(/^KEYCLOAK_(MCP_)?/, "").replaceAll("_", "");
+  let best: string | undefined;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  const given = core(name);
+  for (const known of KNOWN_VARIABLES) {
+    const target = core(known);
+    // A shortened or extended name (KEYCLOAK_MCP_REQUIRE_CONFIRM) counts as close.
+    const prefix = given.length >= 4 && (target.startsWith(given) || given.startsWith(target));
+    const distance = prefix ? 1 : Math.min(editDistance(name, known), editDistance(given, target));
+    if (distance < bestDistance) {
+      best = known;
+      bestDistance = distance;
+    }
+  }
+  const limit = Math.min(3, Math.max(1, Math.floor(given.length / 3)));
+  return bestDistance <= limit ? best : undefined;
+}
+
+/** Warnings for KEYCLOAK_* variables this server does not know (only names, never values). */
+function unknownVariableWarnings(env: NodeJS.ProcessEnv): string[] {
+  return Object.keys(env)
+    .filter((name) => name.startsWith("KEYCLOAK_") && !KNOWN_VARIABLES.includes(name))
+    .sort()
+    .map((name) => {
+      const suggestion = suggestVariable(name);
+      return suggestion === undefined
+        ? `Unknown variable ${name} is ignored; it is not a setting of this server.`
+        : `Unknown variable ${name} is ignored; did you mean ${suggestion}?`;
+    });
+}
+
 function resolveToolsets(names: readonly string[], issues: string[]): Set<ToolsetName> {
   if (names.length === 0) return new Set(DEFAULT_TOOLSETS);
   if (names.includes("all")) return new Set(TOOLSET_NAMES);
@@ -142,7 +206,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   const e = parsed.data;
   const issues: string[] = [];
-  const warnings: string[] = [];
+  const warnings: string[] = unknownVariableWarnings(env);
+
+  const { protocol, hostname, username: urlUser, password: urlPassword } = new URL(e.KEYCLOAK_URL);
+  if (urlUser !== "" || urlPassword !== "") {
+    // Never echo the URL: it contains the credentials.
+    issues.push(
+      "KEYCLOAK_URL: must not contain a user name or password (user:password@host). Use KEYCLOAK_CLIENT_ID/KEYCLOAK_CLIENT_SECRET or KEYCLOAK_USERNAME/KEYCLOAK_PASSWORD.",
+    );
+  }
 
   const username = e.KEYCLOAK_USERNAME ?? e.KEYCLOAK_ADMIN;
   const password = e.KEYCLOAK_PASSWORD ?? e.KEYCLOAK_ADMIN_PASSWORD;
@@ -202,7 +274,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new ConfigError(issues);
   }
 
-  const { protocol, hostname } = new URL(e.KEYCLOAK_URL);
   if (protocol === "http:" && !isLoopbackHost(hostname)) {
     warnings.push(
       `KEYCLOAK_URL uses plain http:// for the remote host '${hostname}'; tokens and credentials travel unencrypted. Use https://.`,
@@ -224,13 +295,22 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   };
 }
 
-function isLoopbackHost(hostname: string): boolean {
-  return (
-    hostname === "localhost" ||
-    hostname.endsWith(".localhost") ||
-    hostname === "[::1]" ||
-    hostname.startsWith("127.")
-  );
+/**
+ * True for `localhost`, `*.localhost` and the loopback addresses 127.0.0.0/8 and
+ * ::1. Addresses are parsed, so host names that merely start with "127." do not count.
+ */
+export function isLoopbackHost(hostname: string): boolean {
+  const host =
+    hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  switch (isIP(host)) {
+    case 4:
+      return host.split(".")[0] === "127";
+    case 6:
+      return host === "::1";
+    default:
+      return false;
+  }
 }
 
 /** Values that must be masked in logs. */
