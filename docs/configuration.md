@@ -251,7 +251,7 @@ Set it in the client's `env` block next to the `KEYCLOAK_*` variables, for examp
   "mcpServers": {
     "keycloak": {
       "command": "npx",
-      "args": ["-y", "keycloak-model-context-protocol"],
+      "args": ["-y", "keycloak-model-context-protocol@1"],
       "env": {
         "KEYCLOAK_URL": "https://keycloak.internal.example",
         "KEYCLOAK_AUTH_REALM": "demo",

@@ -63,7 +63,7 @@ Invalid configuration:
 
 ```bash
 KEYCLOAK_URL=https://keycloak.example.com KEYCLOAK_CLIENT_ID=<id> KEYCLOAK_CLIENT_SECRET=<secret> \
-  npx -y keycloak-model-context-protocol
+  npx -y keycloak-model-context-protocol@1
 ```
 
 The server logs `keycloak-model-context-protocol started` to stderr and then waits for MCP messages on stdin. Startup does not contact Keycloak; the first login happens on the first tool call, so a wrong URL or password shows up there, not at startup.
@@ -235,7 +235,7 @@ npx @modelcontextprotocol/inspector \
   -e KEYCLOAK_CLIENT_ID=<id> \
   -e KEYCLOAK_CLIENT_SECRET=<secret> \
   -e KEYCLOAK_MCP_TOOLSETS=all \
-  -- npx -y keycloak-model-context-protocol
+  -- npx -y keycloak-model-context-protocol@1
 ```
 
 For a local checkout, build first and replace the last line with `-- node dist/index.js`. In the browser UI, open *Tools → List tools*, run `realm_list`, then the tool you are debugging. If a call works in the Inspector but not in your client, compare the `env` block of the client with the flags above, and check that the client restarted after the change.

@@ -70,7 +70,7 @@ Minimal migration of an existing Claude Desktop entry, keeping the password gran
   "mcpServers": {
     "keycloak": {
       "command": "npx",
-      "args": ["-y", "keycloak-model-context-protocol@1.0.0"],
+      "args": ["-y", "keycloak-model-context-protocol@1"],
       "env": {
         "KEYCLOAK_URL": "https://keycloak.example.com",
         "KEYCLOAK_USERNAME": "<username>",

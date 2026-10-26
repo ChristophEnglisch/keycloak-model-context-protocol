@@ -53,7 +53,7 @@ claude mcp add --transport stdio \
   --env KEYCLOAK_AUTH_REALM=demo \
   --env KEYCLOAK_CLIENT_ID=mcp-admin \
   --env KEYCLOAK_CLIENT_SECRET="$KEYCLOAK_CLIENT_SECRET" \
-  keycloak -- npx -y keycloak-model-context-protocol
+  keycloak -- npx -y keycloak-model-context-protocol@1
 ```
 
 Or as JSON (Claude Desktop, `claude_desktop_config.json`):
@@ -63,7 +63,7 @@ Or as JSON (Claude Desktop, `claude_desktop_config.json`):
   "mcpServers": {
     "keycloak": {
       "command": "npx",
-      "args": ["-y", "keycloak-model-context-protocol"],
+      "args": ["-y", "keycloak-model-context-protocol@1"],
       "env": {
         "KEYCLOAK_URL": "https://keycloak.example.com",
         "KEYCLOAK_AUTH_REALM": "demo",

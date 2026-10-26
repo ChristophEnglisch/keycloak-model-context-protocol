@@ -128,7 +128,7 @@ claude mcp add --transport stdio \
   --env KEYCLOAK_AUTH_REALM="$KEYCLOAK_AUTH_REALM" \
   --env KEYCLOAK_CLIENT_ID="$KEYCLOAK_CLIENT_ID" \
   --env KEYCLOAK_CLIENT_SECRET="$KEYCLOAK_CLIENT_SECRET" \
-  keycloak -- npx -y keycloak-model-context-protocol
+  keycloak -- npx -y keycloak-model-context-protocol@1
 ```
 
 For Claude Desktop, VS Code, Cursor and generic clients see [clients.md](clients.md). Tune behaviour (toolsets, read-only mode, realm allowlist) in [configuration.md](configuration.md). Recommended for the first run:
@@ -151,7 +151,7 @@ npx -y @modelcontextprotocol/inspector \
   -e KEYCLOAK_AUTH_REALM="$KEYCLOAK_AUTH_REALM" \
   -e KEYCLOAK_CLIENT_ID="$KEYCLOAK_CLIENT_ID" \
   -e KEYCLOAK_CLIENT_SECRET="$KEYCLOAK_CLIENT_SECRET" \
-  -- npx -y keycloak-model-context-protocol
+  -- npx -y keycloak-model-context-protocol@1
 ```
 
 Open the printed URL, then:
