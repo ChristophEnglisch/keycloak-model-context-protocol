@@ -1,10 +1,20 @@
 name: Release
 
 # release-please opens/updates a release PR from Conventional Commits on main.
-# Merging that PR creates the tag + GitHub release; the jobs below then publish
-# to npm (Trusted Publishing / OIDC, no NPM_TOKEN) and to the MCP Registry.
-# A manual run (workflow_dispatch) skips release-please and publishes an existing
-# release tag again, e.g. after a failed publish job.
+# Merging that PR creates the tag + GitHub release; the jobs below then build the
+# package, publish it to npm (Trusted Publishing / OIDC, no NPM_TOKEN) and update
+# the MCP Registry.
+#
+# Build and publish are separate jobs: "build" runs npm ci, the compiler and the
+# tests without an OIDC token and hands the packed tarball over as an artifact;
+# "publish-npm" only uploads that tarball and runs no code from node_modules.
+#
+# After a failed publish, use "Re-run failed jobs" on the original run. A manual
+# run (workflow_dispatch) skips release-please and publishes an existing release
+# tag again, but only from main, only while main still points at the tag commit
+# (npm records the triggering commit in the provenance) and only if "CI result"
+# passed for that commit.
+#
 # The npm Trusted Publisher on npmjs.com is bound
 # to THIS file name (release.yml) and the environment "release" - do not rename.
 
@@ -14,7 +24,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag to publish again (e.g. v1.0.0)
+        description: Existing release tag to publish again (e.g. v1.0.0); must point at the current main
         required: true
         type: string
 
@@ -31,6 +41,9 @@ jobs:
     if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Holds the release app's private key as an environment secret, so no other
+    # job can read it. A repository secret of the same name works as well.
+    environment: release-please
     # release-please acts with a short-lived GitHub App token, not the GITHUB_TOKEN:
     # release PRs then trigger CI, and the repository setting "Allow GitHub Actions
     # to create and approve pull requests" can stay off.
@@ -47,7 +60,7 @@ jobs:
           HAS_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY != '' }}
         run: |
           if [ -z "$CLIENT_ID" ] || [ "$HAS_KEY" != "true" ]; then
-            echo "::error::Release app not configured: set variable RELEASE_APP_CLIENT_ID and secret RELEASE_APP_PRIVATE_KEY."
+            echo "::error::Release app not configured: set variable RELEASE_APP_CLIENT_ID and secret RELEASE_APP_PRIVATE_KEY (environment release-please)."
             exit 1
           fi
       - id: app-token
@@ -65,17 +78,18 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  publish-npm:
-    name: Publish to npm
+  build:
+    name: Build & test package
     needs: release-please
     # !cancelled(): on a manual run release-please is skipped, which would otherwise skip this job too.
     if: ${{ !cancelled() && (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment: release
+    # No id-token here: the compiler, the tests and every dev dependency they load
+    # run in this job and must not be able to request a token npm accepts.
     permissions:
       contents: read
-      id-token: write # npm Trusted Publishing (OIDC) + provenance
+      checks: read # manual runs: look up "CI result" for the tag commit
     env:
       TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.release-please.outputs.tag_name }}
     steps:
@@ -85,20 +99,44 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/tags/${{ env.TAG }}
+          # Full history, so the tag commit can be checked against origin/main.
+          fetch-depth: 0
           persist-credentials: false
+      - name: Check the tag commit
+        env:
+          EVENT: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          tag_sha="$(git rev-parse "refs/tags/${TAG}^{commit}")"
+          echo "$TAG -> $tag_sha, run started for $GITHUB_REF at $GITHUB_SHA"
+          # npm writes GITHUB_SHA into the provenance as the source commit, so the
+          # package must be built from exactly that commit.
+          if [ "$tag_sha" != "$GITHUB_SHA" ]; then
+            echo "::error::Tag $TAG points at $tag_sha, but this run was started for $GITHUB_SHA. The provenance would name the wrong commit. Publish a new patch release instead."
+            exit 1
+          fi
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "::error::Start manual release runs from main, not $GITHUB_REF."
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$tag_sha" origin/main; then
+              echo "::error::Tag $TAG ($tag_sha) is not on main."
+              exit 1
+            fi
+            ci="$(gh api "repos/${REPO}/commits/${tag_sha}/check-runs?check_name=CI%20result&filter=latest" \
+              --jq '[.check_runs[] | select(.app.slug == "github-actions") | .conclusion] | first // "missing"')"
+            if [ "$ci" != "success" ]; then
+              echo "::error::\"CI result\" for $tag_sha is '$ci', expected 'success'."
+              exit 1
+            fi
+            echo "Tag commit is on main and passed \"CI result\"."
+          fi
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-          cache: npm
-          registry-url: https://registry.npmjs.org
-      - name: Ensure npm >= 11.5.1 (required for Trusted Publishing)
-        run: |
-          current="$(npm --version)"
-          echo "npm $current (node $(node --version))"
-          if [ "$(printf '%s\n' 11.5.1 "$current" | sort -V | head -n1)" != "11.5.1" ]; then
-            npm install -g npm@latest
-            echo "upgraded to npm $(npm --version)"
-          fi
+          package-manager-cache: false
       - name: Check tag matches package.json
         run: |
           EXPECTED="${TAG#v}"
@@ -106,13 +144,72 @@ jobs:
           test "$actual" = "$EXPECTED" || { echo "package.json $actual != release $EXPECTED"; exit 1; }
       - run: npm ci --ignore-scripts
       - run: npm run build
+      - name: Pack
+        run: |
+          mkdir -p "$RUNNER_TEMP/package"
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/package"
+          ls -l "$RUNNER_TEMP/package"
+      # Uploaded before the tests run, so test code cannot change the tarball any more.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-package
+          path: ${{ runner.temp }}/package/*.tgz
+          if-no-files-found: error
+          retention-days: 30
       - run: npm test
+
+  publish-npm:
+    name: Publish to npm
+    needs: [release-please, build]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    # Nothing from the repository or node_modules runs here: no checkout, no npm ci,
+    # no cache. The job only publishes the tarball the build job packed.
+    permissions:
+      id-token: write # npm Trusted Publishing (OIDC) + provenance
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.release-please.outputs.tag_name }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-package
+          path: ${{ runner.temp }}/package
+      - id: tarball
+        name: Check the tarball
+        run: |
+          file="$RUNNER_TEMP/package/keycloak-model-context-protocol-${TAG#v}.tgz"
+          ls -l "$RUNNER_TEMP/package"
+          test "$(find "$RUNNER_TEMP/package" -type f | wc -l)" -eq 1 || { echo "::error::Expected exactly one file in the artifact."; exit 1; }
+          test -f "$file" || { echo "::error::Missing $(basename "$file") in the artifact."; exit 1; }
+          manifest="$(tar -xOzf "$file" package/package.json | jq -r '.name + "@" + .version')"
+          test "$manifest" = "keycloak-model-context-protocol@${TAG#v}" || { echo "::error::Tarball contains $manifest, expected release $TAG."; exit 1; }
+          sha256sum "$file"
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+          registry-url: https://registry.npmjs.org
+      # Every Node 24 release since 24.5.0 bundles a new enough npm, so nothing is
+      # installed here; an older npm stops the job instead of being upgraded ad hoc.
+      - name: Check npm >= 11.5.1 (required for Trusted Publishing)
+        run: |
+          current="$(npm --version)"
+          echo "npm $current (node $(node --version))"
+          if [ "$(printf '%s\n' 11.5.1 "$current" | sort -V | head -n1)" != "11.5.1" ]; then
+            echo "::error::npm $current is too old for Trusted Publishing (needs 11.5.1 or newer)."
+            exit 1
+          fi
       # npm swallows a failed OIDC token exchange (it is only logged at "verbose")
       # and then publishes without auth, which the registry answers with E404.
       # --loglevel verbose makes the registry's reason ("oidc ... Failed token
       # exchange request with body message: ...") visible in the job log.
       - name: Publish (OIDC, no token)
-        run: npm publish --provenance --access public --ignore-scripts --loglevel verbose
+        env:
+          FILE: ${{ steps.tarball.outputs.file }}
+        run: npm publish "$FILE" --provenance --access public --ignore-scripts --loglevel verbose
 
   publish-mcp-registry:
     name: Publish to MCP Registry
@@ -120,7 +217,10 @@ jobs:
     if: ${{ !cancelled() && needs.publish-npm.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: release
+    # Its own environment: the npm Trusted Publisher names the environment
+    # "release", so an OIDC token from this job, which runs a third-party binary,
+    # cannot publish to npm. The MCP Registry checks the repository owner only.
+    environment: mcp-registry
     permissions:
       contents: read
       id-token: write # GitHub OIDC login for mcp-publisher
