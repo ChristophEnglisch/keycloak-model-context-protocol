@@ -118,7 +118,7 @@ The admin client has a global `setConfig({ realmName })`. Version 0.0.2 used it 
 
 ### `confirm` parameter instead of elicitation
 
-Destructive tools take a `confirm` flag; without it they return a preview and change nothing. MCP elicitation (the server asks the user through the client) was considered but not used:
+Destructive and sensitive tools take a `confirm` flag; without it they return a preview and change nothing. The preview is computed on every call, also with `confirm: true`, so it can refuse a call and is repeated in the result. MCP elicitation (the server asks the user through the client) was considered but not used:
 
 - Elicitation is deprecated in protocol version 2026-07-28, and many clients do not implement it yet.
 - A plain parameter works with every client and every transport, can be tested without a client simulator and gives the model a clear recovery path (ask the user, call again).
@@ -150,7 +150,7 @@ Which tools exist is decided once at startup from `KEYCLOAK_MCP_TOOLSETS` and `K
      name: "group_count",              // <domain>_<verb>, snake_case
      title: "Count groups",
      description: "Count the groups of a realm. Say what it does and what it does not return.",
-     kind: "read",                     // "read" | "write" | "destructive"
+     kind: "read",                     // "read" | "write" | "sensitive" | "destructive"
      input: z.object({
        realm: realmField,              // always an explicit realm
        // every field needs .describe(...)
@@ -167,7 +167,7 @@ Which tools exist is decided once at startup from `KEYCLOAK_MCP_TOOLSETS` and `K
    ```
 
    Rules enforced by `defineTool` and the tests:
-   - Destructive tools must provide `preview()` and must not declare `confirm` themselves.
+   - Sensitive and destructive tools must provide `preview()` and must not declare `confirm` themselves. Use `sensitive` for every write that changes identity, credentials, rights or protection mechanisms. Quote Keycloak free text in previews with `quoted()`.
    - Every input field needs a description; every tool needs `title`, `description` and `outputSchema`.
    - Fields that become URL path segments should be named `realm`, `id`, `userId` or `groupId` so the path guard applies, or must be validated with `assertPathSegment`.
    - Return only allowlisted fields, never secrets, and keep Keycloak free text out of `summary`.

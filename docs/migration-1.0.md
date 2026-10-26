@@ -11,7 +11,7 @@ A complete rewrite of the server. Everything from the 0.0.x line that mattered i
   - `KEYCLOAK_MCP_READ_ONLY` registers read-only tools only.
   - `KEYCLOAK_MCP_REALMS` restricts the realms that can be targeted.
   - Write operations in `master` are blocked unless `KEYCLOAK_MCP_ALLOW_MASTER_WRITE=true`.
-  - Destructive tools (`user_delete`, `user_group_remove`, `user_role_revoke`, `user_logout`) show a preview and require `confirm: true`.
+  - Destructive tools (`user_delete`, `user_group_remove`, `user_role_revoke`, `user_logout`) show a preview and require `confirm: true`. Since 1.1, the sensitive write tools do so as well; see [security](security.md#sensitive-writes).
   - No default credentials; the server refuses to start with an incomplete configuration.
 - **Service-account login** with the `client_credentials` grant (recommended). The password grant stays available.
 - **Token cache** with refresh, single-flight login and one retry after HTTP 401. The login realm is fixed (`KEYCLOAK_AUTH_REALM`), the target realm travels in each request.
@@ -29,7 +29,7 @@ A complete rewrite of the server. Everything from the 0.0.x line that mattered i
 - **Environment variables**: credentials no longer have defaults (`admin` / `admin` and `http://localhost:8080` are gone). `KEYCLOAK_URL` and credentials are required. `KEYCLOAK_ADMIN` and `KEYCLOAK_ADMIN_PASSWORD` are deprecated aliases.
 - **Node.js 22 or newer** is required (`engines.node >= 22`).
 - **Output format**: tools return `structuredContent` (typed objects) plus a short summary text, instead of free-form JSON text.
-- **`user_delete` requires confirmation** by default: the first call returns a preview, the call must be repeated with `confirm: true`.
+- **`user_delete` requires confirmation** by default: a call without `confirm: true` returns a preview and changes nothing, the call must be repeated with `confirm: true`.
 - **`user_create`** needs only `realm` and `username`; `email`, `firstName` and `lastName` are optional. `email` must be a valid address.
 - **`user_search`** (formerly `list-users`) is paginated: default 50 results, at most 200 per call. Use `first` and `max`.
 - Only `core`, `groups` and `roles` are active by default. Clients, sessions, events and security tools must be enabled.
