@@ -45,12 +45,14 @@ describe("user_logout", () => {
     h.kc.users.listSessions.mockResolvedValue([{ id: "a" }, { id: "b" }]);
     const result = await h.call("user_logout", { realm: "shop", userId: "u1" });
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toMatch(/2 active.*'bob'.*confirm: true/s);
+    expect(textOf(result)).toMatch(/2 active.*"bob".*confirm: true/s);
     expect(h.kc.users.logout).not.toHaveBeenCalled();
   });
 
   it("logs out with confirm: true", async () => {
     h = await start();
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
+    h.kc.users.listSessions.mockResolvedValue([]);
     h.kc.users.logout.mockResolvedValue(undefined);
     const result = await h.call("user_logout", { realm: "shop", userId: "u1", confirm: true });
     expect(h.kc.users.logout).toHaveBeenCalledWith({ realm: "shop", id: "u1" });

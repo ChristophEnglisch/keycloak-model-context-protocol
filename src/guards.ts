@@ -58,17 +58,22 @@ export function isRealmAllowed(policy: RealmPolicy, realm: string): boolean {
 }
 
 /**
- * Destructive tools must be called with confirm=true when confirmation is required.
+ * Destructive and sensitive tools must be called with confirm=true when
+ * confirmation is required. `unconditional` confirmations (administrative grants,
+ * the server's own account) ignore KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false.
  * Throws a ToolError carrying the preview so the model can ask the user and retry.
  */
 export function requireConfirmation(
   policy: Pick<Config, "requireConfirmation">,
   confirm: boolean | undefined,
   preview: string,
+  options: { unconditional?: boolean } = {},
 ): void {
-  if (!policy.requireConfirmation || confirm === true) return;
+  if (confirm === true) return;
+  if (!policy.requireConfirmation && options.unconditional !== true) return;
+  const always = options.unconditional === true ? " This confirmation cannot be turned off." : "";
   throw new ToolError(
     "confirmation_required",
-    `Confirmation required. This would: ${preview} Nothing was changed. Ask the user for approval, then call this tool again with confirm: true.`,
+    `Confirmation required. This would: ${preview} Nothing was changed. Ask the user for approval, then call this tool again with confirm: true.${always}`,
   );
 }

@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { ToolError } from "../keycloak/errors.js";
-import { defineTool, realmField } from "./shared.js";
+import { ownAccountPreview, requireUser } from "./privileges.js";
+import { defineTool, quoted, realmField } from "./shared.js";
 
 const userIdField = z.string().min(1).describe("ID (UUID) of the user, e.g. from user_search.");
 
@@ -52,14 +52,18 @@ const userLogout = defineTool({
     userId: z.string().describe("User whose sessions were ended."),
     realm: z.string().describe("Realm of the user."),
   }),
-  async preview({ realm, userId }, { gateway }) {
-    const { user, sessions } = await gateway.run(async (kc) => ({
-      user: await kc.users.findOne({ realm, id: userId }),
-      sessions: await kc.users.listSessions({ realm, id: userId }),
-    }));
-    if (!user)
-      throw new ToolError("not_found", `User ${userId} does not exist in realm '${realm}'.`);
-    return `end all sessions (${sessions.length} active) of user '${user.username ?? userId}' (id ${userId}) in realm '${realm}'.`;
+  async preview({ realm, userId }, { gateway, config }) {
+    return gateway.run(async (kc) => {
+      const user = await requireUser(kc, realm, userId);
+      const sessions = await kc.users.listSessions({ realm, id: userId });
+      return ownAccountPreview(
+        kc,
+        config,
+        realm,
+        user,
+        `end all sessions (${sessions.length} active) of user ${quoted(user.username ?? userId)} (id ${userId}) in realm '${realm}'.`,
+      );
+    });
   },
   async handler({ realm, userId }, { gateway }) {
     await gateway.run((kc) => kc.users.logout({ realm, id: userId }));

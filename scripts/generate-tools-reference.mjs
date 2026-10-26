@@ -67,6 +67,11 @@ async function collect() {
       name,
       toolNames: defs.map((d) => d.name),
     }));
+    // The annotations cannot tell sensitive from destructive tools; the definitions can.
+    const kinds = new Map(
+      Object.values(TOOLSETS).flatMap((defs) => defs.map((d) => [d.name, d.kind])),
+    );
+    for (const tool of tools) tool.kind = kinds.get(tool.name);
     return { tools, prompts, resources, templates, toolsets };
   } finally {
     await client.close();
@@ -158,12 +163,12 @@ function table(rows, { withRequired }) {
 function badges(tool) {
   const a = tool.annotations ?? {};
   const out = [];
-  if (a.readOnlyHint) out.push("read-only");
-  else if (a.destructiveHint) out.push("destructive");
-  else out.push("write");
+  out.push(tool.kind === "read" ? "read-only" : tool.kind);
   if (a.idempotentHint) out.push("idempotent");
   else if (!a.readOnlyHint) out.push("not idempotent");
-  if (a.destructiveHint) out.push("requires `confirm: true`");
+  if (tool.kind === "sensitive" || tool.kind === "destructive") {
+    out.push("requires `confirm: true`");
+  }
   return out;
 }
 
@@ -208,7 +213,8 @@ function render({ tools, prompts, resources, templates, toolsets }) {
     "Conventions:",
     "",
     "- Every tool takes the target `realm` explicitly. It is the realm to operate on, not the realm used for login.",
-    "- Destructive tools take an additional optional `confirm` parameter. Unless `KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false`, the first call returns a preview and changes nothing; call again with `confirm: true` after the user approved.",
+    "- Every tool that changes data is *sensitive* (it changes identity, credentials, rights or protection mechanisms) or *destructive* (it deletes or revokes). Both kinds carry `destructiveHint=true` and take an additional optional `confirm` parameter. A call without `confirm: true` only returns a preview and changes nothing; call again with `confirm: true` after the user approved. The model can set `confirm: true` itself, even on the first call: the server then still computes the preview and returns it with the result, but only the client's approval prompt proves that a human agreed.",
+    "- `KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false` turns the confirmation off, except for grants of administrative rights (also through composite roles and groups), `user_update` and `user_send_actions_email` for accounts with administrative rights, and changes to the account the server signs in with. For that account, role and group grants, `user_update` and `user_send_actions_email` are refused.",
     "- List tools are paginated with `first` and `max` and return `{ items, first, max, hasMore }`.",
     "- Results carry a short neutral summary in `content` and the data in `structuredContent`. Errors are returned with `isError: true`.",
     "",
@@ -221,11 +227,7 @@ function render({ tools, prompts, resources, templates, toolsets }) {
     for (const name of set.toolNames) {
       const tool = byName.get(name);
       if (!tool) continue;
-      const kind = tool.annotations?.readOnlyHint
-        ? "read"
-        : tool.annotations?.destructiveHint
-          ? "destructive"
-          : "write";
+      const kind = tool.kind;
       const first = (tool.description ?? "").split(/(?<=\.)\s+(?=[A-Z])/)[0];
       out.push(`| \`${set.name}\` | [\`${name}\`](#${anchor(tool)}) | ${kind} | ${cell(first)} |`);
     }

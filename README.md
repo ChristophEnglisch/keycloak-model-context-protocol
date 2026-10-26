@@ -7,13 +7,13 @@
 A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for **Keycloak administration**. It lets an AI assistant such as Claude manage users, groups, roles and sessions, and inspect clients, events and the security posture of your realms, through the Keycloak Admin REST API, with least-privilege authentication and guardrails around every write.
 
 > [!WARNING]
-> This server acts with the permissions of the Keycloak account you give it. Use a **dedicated service-account client with only the roles you need**, never the bootstrap admin. Destructive tools ask for confirmation by default, and a read-only mode is available. See [Security](#security).
+> This server acts with the permissions of the Keycloak account you give it. Use a **dedicated service-account client with only the roles you need**, never the bootstrap admin. Every tool that changes data asks for confirmation by default, and a read-only mode is available. See [Security](#security).
 
 ## Highlights
 
 - **24 tools in 7 toolsets**, enabled per toolset. The default set (`core`, `groups`, `roles`) is small; everything else is opt-in.
 - **Least-privilege auth.** `client_credentials` with a service account is the recommended grant; the password grant stays available. No credential defaults, so a missing setting fails fast.
-- **Guardrails.** Read-only mode, realm allowlist, write protection for the `master` realm, and a preview-then-`confirm: true` flow for destructive operations.
+- **Guardrails.** Read-only mode, realm allowlist, write protection for the `master` realm, and a preview-then-`confirm: true` flow for every change. Grants of administrative rights are detected through composite roles and parent groups.
 - **4 guided prompts** (onboarding, offboarding, security audit, failed-login investigation) and **MCP resources** for realms and users, with realm-name completion.
 - **Structured, paginated output** with output schemas; secrets and credentials are never returned or logged.
 - Works with Claude Desktop, Claude Code, VS Code, Cursor and any stdio MCP client. Requires Node.js 22 or newer.
@@ -24,9 +24,11 @@ Your MCP client starts the server as a local child process and talks to it over 
 
 ![Architecture: the MCP client talks JSON-RPC over stdio to the server, whose guards, toolsets and gateway call the Keycloak token endpoint and Admin REST API](https://raw.githubusercontent.com/ChristophEnglisch/keycloak-model-context-protocol/main/docs/diagrams/architecture.svg)
 
-### What a destructive call looks like
+### What a confirmed call looks like
 
-A destructive tool never acts on the first call. It returns a preview of what would happen and changes nothing. Only after you approve does the assistant repeat the call with `confirm: true`.
+Every tool that changes data is _destructive_ (it deletes or revokes) or _sensitive_ (it changes identity, credentials, rights or protection mechanisms, for example `user_update` or `user_role_assign`). Called without `confirm: true`, such a tool only returns a preview of what would happen and changes nothing. After you approve, the assistant repeats the call with `confirm: true`.
+
+The model can set `confirm: true` itself, even on its first call. The server then still computes the preview and returns it with the result, but only your client's approval prompt proves that a human agreed. All these tools carry `destructiveHint`, so clients that ask before destructive calls ask here too.
 
 ![Sequence of a destructive call: the first user_delete call returns a preview and changes nothing, the repeated call with confirm: true deletes the user](https://raw.githubusercontent.com/ChristophEnglisch/keycloak-model-context-protocol/main/docs/diagrams/destructive-call.svg)
 
@@ -96,7 +98,7 @@ All settings are environment variables. Only `KEYCLOAK_URL` and one set of crede
 | `KEYCLOAK_MCP_READ_ONLY`                        | `false`             | Register read-only tools only                                  |
 | `KEYCLOAK_MCP_REALMS`                           | all                 | Comma-separated allowlist of target realms                     |
 | `KEYCLOAK_MCP_ALLOW_MASTER_WRITE`               | `false`             | Allow write tools in the `master` realm                        |
-| `KEYCLOAK_MCP_REQUIRE_CONFIRMATION`             | `true`              | Destructive tools need `confirm: true`                         |
+| `KEYCLOAK_MCP_REQUIRE_CONFIRMATION`             | `true`              | Destructive and sensitive tools need `confirm: true`           |
 | `KEYCLOAK_MCP_TIMEOUT_MS`                       | `30000`             | HTTP timeout for Keycloak requests                             |
 | `KEYCLOAK_MCP_LOG_LEVEL`                        | `info`              | `debug`, `info`, `warn` or `error` (stderr)                    |
 
@@ -106,15 +108,15 @@ Full reference with examples, validation rules and the tool-to-role matrix: [doc
 
 Tools are named `<domain>_<verb>`. Only the **default** toolsets are enabled unless you set `KEYCLOAK_MCP_TOOLSETS`. In read-only mode only tools of kind _read_ are registered.
 
-| Toolset    | Default | Tools                                                                                                                                      |
-| ---------- | :-----: | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `core`     |   yes   | `realm_list`, `realm_get`, `user_search`, `user_get`, `user_create`, `user_update`, `user_delete` (destructive), `user_send_actions_email` |
-| `groups`   |   yes   | `group_list`, `group_members_list`, `user_group_add`, `user_group_remove` (destructive)                                                    |
-| `roles`    |   yes   | `role_list`, `user_roles_list`, `user_role_assign` (confirmation for admin roles), `user_role_revoke` (destructive)                        |
-| `clients`  |   no    | `client_list`, `client_get`                                                                                                                |
-| `sessions` |   no    | `user_sessions_list`, `user_logout` (destructive)                                                                                          |
-| `events`   |   no    | `event_list`, `admin_event_list`                                                                                                           |
-| `security` |   no    | `user_brute_force_status`, `user_brute_force_unlock`                                                                                       |
+| Toolset    | Default | Tools                                                                                                                                                                          |
+| ---------- | :-----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `core`     |   yes   | `realm_list`, `realm_get`, `user_search`, `user_get`, `user_create` (sensitive), `user_update` (sensitive), `user_delete` (destructive), `user_send_actions_email` (sensitive) |
+| `groups`   |   yes   | `group_list`, `group_members_list`, `user_group_add` (sensitive), `user_group_remove` (destructive)                                                                            |
+| `roles`    |   yes   | `role_list`, `user_roles_list`, `user_role_assign` (sensitive), `user_role_revoke` (destructive)                                                                               |
+| `clients`  |   no    | `client_list`, `client_get`                                                                                                                                                    |
+| `sessions` |   no    | `user_sessions_list`, `user_logout` (destructive)                                                                                                                              |
+| `events`   |   no    | `event_list`, `admin_event_list`                                                                                                                                               |
+| `security` |   no    | `user_brute_force_status`, `user_brute_force_unlock` (sensitive)                                                                                                               |
 
 Details for every tool (parameters, outputs, required roles): [docs/tools-reference.md](docs/tools-reference.md).
 
@@ -141,7 +143,8 @@ Details for every tool (parameters, outputs, required roles): [docs/tools-refere
 ## Security
 
 - **Least privilege first.** Use a service-account client scoped to one realm with only the `realm-management` roles you need. A role matrix is in [docs/configuration.md](docs/configuration.md#minimal-roles-per-tool).
-- **Destructive operations need confirmation** (`KEYCLOAK_MCP_REQUIRE_CONFIRMATION=true`), and granting administrative roles does too.
+- **Every change needs confirmation** (`KEYCLOAK_MCP_REQUIRE_CONFIRMATION=true`): destructive and sensitive tools show a preview first. Grants of administrative rights, also through composite roles and parent groups, profile changes and action e-mails for accounts with administrative rights, and changes to the server's own account need a confirmation that `KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false` does not turn off. Role and group grants, profile changes and action e-mails for the server's own account are refused.
+- **Account takeover protection:** a changed e-mail address is marked as unverified unless stated otherwise, action e-mail links are valid for at most 24 hours, and previews name the recipient address and whether the target account has administrative rights.
 - **Blast-radius limits:** `KEYCLOAK_MCP_READ_ONLY`, `KEYCLOAK_MCP_REALMS`, and write protection for `master` (off by default).
 - **No secrets in output or logs.** Credentials are masked on stderr; tools never return client secrets, user credentials or attributes.
 - **Prompt injection:** treat names and descriptions coming from Keycloak as data. The shipped prompts say so explicitly; keep write tools disabled when you do not need them.

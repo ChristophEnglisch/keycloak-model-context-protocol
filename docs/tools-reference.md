@@ -13,7 +13,8 @@ The server exposes 24 tools in 7 toolsets, 4 prompts and 4 resources. Which tool
 Conventions:
 
 - Every tool takes the target `realm` explicitly. It is the realm to operate on, not the realm used for login.
-- Destructive tools take an additional optional `confirm` parameter. Unless `KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false`, the first call returns a preview and changes nothing; call again with `confirm: true` after the user approved.
+- Every tool that changes data is *sensitive* (it changes identity, credentials, rights or protection mechanisms) or *destructive* (it deletes or revokes). Both kinds carry `destructiveHint=true` and take an additional optional `confirm` parameter. A call without `confirm: true` only returns a preview and changes nothing; call again with `confirm: true` after the user approved. The model can set `confirm: true` itself, even on the first call: the server then still computes the preview and returns it with the result, but only the client's approval prompt proves that a human agreed.
+- `KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false` turns the confirmation off, except for grants of administrative rights (also through composite roles and groups), `user_update` and `user_send_actions_email` for accounts with administrative rights, and changes to the account the server signs in with. For that account, role and group grants, `user_update` and `user_send_actions_email` are refused.
 - List tools are paginated with `first` and `max` and return `{ items, first, max, hasMore }`.
 - Results carry a short neutral summary in `content` and the data in `structuredContent`. Errors are returned with `isError: true`.
 
@@ -25,17 +26,17 @@ Conventions:
 | `core` | [`realm_get`](#get-realm-settings) | read | Get a safe subset of a realm's settings (login, session, brute-force, password policy and event flags). |
 | `core` | [`user_search`](#search-users) | read | Search users in a realm by free text and/or exact fields, with pagination. |
 | `core` | [`user_get`](#get-user) | read | Get one user by ID with a safe subset of fields (no attributes, no credentials). |
-| `core` | [`user_create`](#create-user) | write | Create a new user in a realm. |
-| `core` | [`user_update`](#update-user) | write | Update selected fields of a user (partial update; omitted fields stay unchanged). |
+| `core` | [`user_create`](#create-user) | sensitive | Create a new user in a realm. |
+| `core` | [`user_update`](#update-user) | sensitive | Update selected fields of a user (partial update; only the given fields are sent, everything else stays unchanged). |
 | `core` | [`user_delete`](#delete-user) | destructive | Permanently delete a user from a realm. |
-| `core` | [`user_send_actions_email`](#send-required-actions-e-mail) | write | Send the user an e-mail with a link to perform required actions (e.g. update password, verify e-mail). |
+| `core` | [`user_send_actions_email`](#send-required-actions-e-mail) | sensitive | Send the user an e-mail with a link to perform required actions (e.g. update password, verify e-mail). |
 | `groups` | [`group_list`](#list-groups) | read | List groups of a realm, optionally filtered by a search string, with pagination. |
 | `groups` | [`group_members_list`](#list-group-members) | read | List the members of a group with a safe subset of user fields, with pagination. |
-| `groups` | [`user_group_add`](#add-user-to-group) | write | Add a user to a group. |
+| `groups` | [`user_group_add`](#add-user-to-group) | sensitive | Add a user to a group. |
 | `groups` | [`user_group_remove`](#remove-user-from-group) | destructive | Remove a user from a group. |
 | `roles` | [`role_list`](#list-roles) | read | List realm roles, or the roles of one client when `clientId` is given, optionally filtered by a search string, with pagination. |
 | `roles` | [`user_roles_list`](#list-user-role-mappings) | read | List the realm and client roles assigned to a user. |
-| `roles` | [`user_role_assign`](#assign-roles-to-user) | write | Assign realm roles (or roles of one client when `clientId` is given) to a user. |
+| `roles` | [`user_role_assign`](#assign-roles-to-user) | sensitive | Assign realm roles (or roles of one client when `clientId` is given) to a user. |
 | `roles` | [`user_role_revoke`](#revoke-roles-from-user) | destructive | Remove realm roles (or roles of one client when `clientId` is given) from a user. |
 | `clients` | [`client_list`](#list-clients) | read | List clients of a realm with pagination, optionally filtered by clientId (prefix/infix search). |
 | `clients` | [`client_get`](#get-client) | read | Get one client by internal `id` or by `clientId` (exactly one of them). |
@@ -44,7 +45,7 @@ Conventions:
 | `events` | [`event_list`](#list-login-events) | read | List user/login events of a realm (logins, failed logins, logouts, password changes) with filters and pagination. |
 | `events` | [`admin_event_list`](#list-admin-events) | read | List admin (audit) events of a realm: who changed which resource and when. |
 | `security` | [`user_brute_force_status`](#get-brute-force-status) | read | Show the brute-force detection state of a user: whether the account is temporarily locked and recent failure counters. |
-| `security` | [`user_brute_force_unlock`](#unlock-user-brute-force) | write | Clear the brute-force detection state of a user so a temporarily locked account can log in again. |
+| `security` | [`user_brute_force_unlock`](#unlock-user-brute-force) | sensitive | Clear the brute-force detection state of a user so a temporarily locked account can log in again. |
 
 ## Toolset `core`
 
@@ -191,11 +192,11 @@ Annotations: `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`
 
 `user_create`
 
-**write · not idempotent**
+**sensitive · not idempotent · requires `confirm: true`**
 
-Create a new user in a realm. The user is enabled by default and has no credentials; use a separate flow to set a password or send required actions.
+Create a new user in a realm. The user is enabled by default and has no credentials; use a separate flow to set a password or send required actions. Requires confirm: true after the user approved the preview.
 
-Annotations: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=false`, `openWorldHint=false`
+Annotations: `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=false`, `openWorldHint=false`
 
 **Parameters**
 
@@ -208,6 +209,7 @@ Annotations: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=fals
 | `lastName` | `string` | no |   | Last name. |
 | `enabled` | `boolean` | no | `true` | Whether the user can log in (default true). |
 | `emailVerified` | `boolean` | no |   | Mark the e-mail address as verified. |
+| `confirm` | `boolean` | no |   | Must be true to execute this operation. Never set it on the first call: call without it, show the returned preview to the user and only set it after the user approved. |
 
 **Output** (`structuredContent`)
 
@@ -221,11 +223,11 @@ Annotations: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=fals
 
 `user_update`
 
-**write · idempotent**
+**sensitive · idempotent · requires `confirm: true`**
 
-Update selected fields of a user (partial update; omitted fields stay unchanged). At least one field besides realm and userId is required. Setting `requiredActions` replaces the existing list.
+Update selected fields of a user (partial update; only the given fields are sent, everything else stays unchanged). At least one field besides realm and userId is required. Setting `requiredActions` replaces the existing list. Changing `email` marks the address as unverified unless `emailVerified` is given. Requires confirm: true after the user approved the preview, which names the old and new values and whether the account has administrative rights; for such accounts the confirmation cannot be turned off. The account this server signs in with cannot be changed.
 
-Annotations: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false`
+Annotations: `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=true`, `openWorldHint=false`
 
 **Parameters**
 
@@ -233,12 +235,13 @@ Annotations: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true
 |---|---|---|---|---|
 | `realm` | `string` | yes |   | Name of the target realm (the realm to operate on, not the login realm). |
 | `userId` | `string` | yes |   | ID (UUID) of the user to update. |
-| `email` | `string (email)` | no |   | New e-mail address. |
+| `email` | `string (email)` | no |   | New e-mail address. Marks the address as unverified unless emailVerified is set. |
 | `firstName` | `string` | no |   | New first name. |
 | `lastName` | `string` | no |   | New last name. |
 | `enabled` | `boolean` | no |   | Enable or disable the user. |
 | `emailVerified` | `boolean` | no |   | Mark the e-mail as verified or not. |
 | `requiredActions` | `string[]` | no |   | Required actions to set, e.g. UPDATE_PASSWORD (replaces the existing list). |
+| `confirm` | `boolean` | no |   | Must be true to execute this operation. Never set it on the first call: call without it, show the returned preview to the user and only set it after the user approved. |
 
 **Output** (`structuredContent`)
 
@@ -246,7 +249,7 @@ Annotations: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true
 |---|---|---|
 | `userId` | `string` | ID of the updated user. |
 | `realm` | `string` | Realm of the user. |
-| `updatedFields` | `string[]` | Names of the fields that were set. |
+| `updatedFields` | `string[]` | Names of the fields that were set, including emailVerified when it was reset. |
 
 #### Delete user
 
@@ -264,7 +267,7 @@ Annotations: `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=true`
 |---|---|---|---|---|
 | `realm` | `string` | yes |   | Name of the target realm (the realm to operate on, not the login realm). |
 | `userId` | `string` | yes |   | ID (UUID) of the user to delete, e.g. from user_search. |
-| `confirm` | `boolean` | no |   | Must be true to execute this destructive operation. Only set it after the user approved. |
+| `confirm` | `boolean` | no |   | Must be true to execute this operation. Never set it on the first call: call without it, show the returned preview to the user and only set it after the user approved. |
 
 **Output** (`structuredContent`)
 
@@ -278,11 +281,11 @@ Annotations: `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=true`
 
 `user_send_actions_email`
 
-**write · not idempotent**
+**sensitive · not idempotent · requires `confirm: true`**
 
-Send the user an e-mail with a link to perform required actions (e.g. update password, verify e-mail). Each call sends another e-mail. Requires SMTP to be configured in the realm and the user to have an e-mail address.
+Send the user an e-mail with a link to perform required actions (e.g. update password, verify e-mail). Whoever controls the e-mail address can use the link, so this requires confirm: true after the user approved the preview, which names the recipient address and whether the account has administrative rights; for such accounts the confirmation cannot be turned off. Each call sends another e-mail. Requires SMTP to be configured in the realm and the user to have an e-mail address. The account this server signs in with cannot be targeted.
 
-Annotations: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=false`, `openWorldHint=false`
+Annotations: `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=false`, `openWorldHint=false`
 
 **Parameters**
 
@@ -291,9 +294,10 @@ Annotations: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=fals
 | `realm` | `string` | yes |   | Name of the target realm (the realm to operate on, not the login realm). |
 | `userId` | `string` | yes |   | ID (UUID) of the user to e-mail. |
 | `actions` | `"UPDATE_PASSWORD" \| "VERIFY_EMAIL" \| "CONFIGURE_TOTP" \| "UPDATE_PROFILE" \| "TERMS_AND_CONDITIONS"[]` | yes |   | Actions the user must perform via the e-mailed link. |
-| `lifespan` | `integer (min 1)` | no |   | Link validity in seconds (Keycloak default if omitted). |
+| `lifespan` | `integer (min 1, max 86400)` | no |   | Link validity in seconds, at most 86400 (24 hours). If omitted, the realm's setting for admin-initiated action links applies. |
 | `clientId` | `string` | no |   | Client ID used for the redirect after the actions. |
 | `redirectUri` | `string` | no |   | Redirect URI after the actions; requires clientId. |
+| `confirm` | `boolean` | no |   | Must be true to execute this operation. Never set it on the first call: call without it, show the returned preview to the user and only set it after the user approved. |
 
 **Output** (`structuredContent`)
 
@@ -380,11 +384,11 @@ Annotations: `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`
 
 `user_group_add`
 
-**write · idempotent**
+**sensitive · idempotent · requires `confirm: true`**
 
-Add a user to a group. Adding a user who is already a member has no further effect.
+Add a user to a group. The user inherits the roles of the group and of all its parent groups, which can include administrative rights. Requires confirm: true after the user approved the preview. If the group grants administrative rights the preview says so and this confirmation cannot be turned off. The account this server signs in with cannot be added to groups. Adding a user who is already a member has no further effect.
 
-Annotations: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false`
+Annotations: `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=true`, `openWorldHint=false`
 
 **Parameters**
 
@@ -393,6 +397,7 @@ Annotations: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true
 | `realm` | `string` | yes |   | Name of the target realm (the realm to operate on, not the login realm). |
 | `userId` | `string` | yes |   | ID (UUID) of the user. |
 | `groupId` | `string` | yes |   | ID (UUID) of the group. |
+| `confirm` | `boolean` | no |   | Must be true to execute this operation. Never set it on the first call: call without it, show the returned preview to the user and only set it after the user approved. |
 
 **Output** (`structuredContent`)
 
@@ -420,7 +425,7 @@ Annotations: `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=true`
 | `realm` | `string` | yes |   | Name of the target realm (the realm to operate on, not the login realm). |
 | `userId` | `string` | yes |   | ID (UUID) of the user. |
 | `groupId` | `string` | yes |   | ID (UUID) of the group. |
-| `confirm` | `boolean` | no |   | Must be true to execute this destructive operation. Only set it after the user approved. |
+| `confirm` | `boolean` | no |   | Must be true to execute this operation. Never set it on the first call: call without it, show the returned preview to the user and only set it after the user approved. |
 
 **Output** (`structuredContent`)
 
@@ -511,11 +516,11 @@ Annotations: `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`
 
 `user_role_assign`
 
-**write · idempotent**
+**sensitive · idempotent · requires `confirm: true`**
 
-Assign realm roles (or roles of one client when `clientId` is given) to a user. Unknown roles abort the call without changes. Assigning administrative roles (realm role admin/create-realm, any role of client realm-management, realm-admin or manage-*) additionally requires confirm: true after the user approved.
+Assign realm roles (or roles of one client when `clientId` is given) to a user. Unknown roles abort the call without changes. Requires confirm: true after the user approved the preview. If the roles grant administrative rights, directly or through composite roles, the preview says so and this confirmation cannot be turned off. Roles of the account this server signs in with cannot be changed.
 
-Annotations: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false`
+Annotations: `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=true`, `openWorldHint=false`
 
 **Parameters**
 
@@ -525,7 +530,7 @@ Annotations: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true
 | `userId` | `string` | yes |   | ID (UUID) of the user. |
 | `roles` | `string[]` | yes |   | Role names (not IDs), e.g. ['editor']. Use role_list to see available roles. |
 | `clientId` | `string` | no |   | Client ID (the readable `clientId`, not the internal UUID). Omit for realm roles. |
-| `confirm` | `boolean` | no |   | Must be true to assign administrative roles. Only set it after the user approved. |
+| `confirm` | `boolean` | no |   | Must be true to execute this operation. Never set it on the first call: call without it, show the returned preview to the user and only set it after the user approved. |
 
 **Output** (`structuredContent`)
 
@@ -555,7 +560,7 @@ Annotations: `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=true`
 | `userId` | `string` | yes |   | ID (UUID) of the user. |
 | `roles` | `string[]` | yes |   | Role names (not IDs), e.g. ['editor']. Use role_list to see available roles. |
 | `clientId` | `string` | no |   | Client ID (the readable `clientId`, not the internal UUID). Omit for realm roles. |
-| `confirm` | `boolean` | no |   | Must be true to execute this destructive operation. Only set it after the user approved. |
+| `confirm` | `boolean` | no |   | Must be true to execute this operation. Never set it on the first call: call without it, show the returned preview to the user and only set it after the user approved. |
 
 **Output** (`structuredContent`)
 
@@ -695,7 +700,7 @@ Annotations: `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=true`
 |---|---|---|---|---|
 | `realm` | `string` | yes |   | Name of the target realm (the realm to operate on, not the login realm). |
 | `userId` | `string` | yes |   | ID (UUID) of the user, e.g. from user_search. |
-| `confirm` | `boolean` | no |   | Must be true to execute this destructive operation. Only set it after the user approved. |
+| `confirm` | `boolean` | no |   | Must be true to execute this operation. Never set it on the first call: call without it, show the returned preview to the user and only set it after the user approved. |
 
 **Output** (`structuredContent`)
 
@@ -826,11 +831,11 @@ Annotations: `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`
 
 `user_brute_force_unlock`
 
-**write · idempotent**
+**sensitive · idempotent · requires `confirm: true`**
 
-Clear the brute-force detection state of a user so a temporarily locked account can log in again. Does not change the user's enabled flag.
+Clear the brute-force detection state of a user so a temporarily locked account can log in again. This lifts a protection against password guessing, so it requires confirm: true after the user approved the preview. Does not change the user's enabled flag.
 
-Annotations: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`, `openWorldHint=false`
+Annotations: `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=true`, `openWorldHint=false`
 
 **Parameters**
 
@@ -838,6 +843,7 @@ Annotations: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true
 |---|---|---|---|---|
 | `realm` | `string` | yes |   | Name of the target realm (the realm to operate on, not the login realm). |
 | `userId` | `string` | yes |   | ID (UUID) of the user, e.g. from user_search. |
+| `confirm` | `boolean` | no |   | Must be true to execute this operation. Never set it on the first call: call without it, show the returned preview to the user and only set it after the user approved. |
 
 **Output** (`structuredContent`)
 

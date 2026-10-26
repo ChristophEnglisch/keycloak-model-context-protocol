@@ -27,6 +27,7 @@ flowchart TD
 | `Cannot reach Keycloak at ...` | [TLS and network](#network-and-tls-errors) |
 | A tool does not show up | [Toolset not active](#a-tool-is-missing) |
 | `Confirmation required.` | [Confirmation](#confirmation-required) |
+| `Refusing to ... the account this server signs in with` | [Own account](#refusing-to-change-the-servers-own-account) |
 | `Realm '...' is not permitted by KEYCLOAK_MCP_REALMS` | [Realm not permitted](#realm-not-permitted) |
 | `Write operations in the 'master' realm are disabled.` | [master write protection](#master-write-protection) |
 
@@ -175,12 +176,20 @@ After changing the environment, restart the MCP client or reload the server; mos
 **Message.**
 
 ```text
-Confirmation required. This would: permanently delete user '<username>' (id <id>) from realm '<realm>'. Nothing was changed. Ask the user for approval, then call this tool again with confirm: true.
+Confirmation required. This would: permanently delete user "<username>" (id <id>) from realm '<realm>'. Nothing was changed. Ask the user for approval, then call this tool again with confirm: true.
 ```
 
-**Cause.** `user_delete`, `user_group_remove`, `user_role_revoke` and `user_logout` are destructive. By default they only show a preview.
+**Cause.** Every tool that changes data is destructive (`user_delete`, `user_group_remove`, `user_role_revoke`, `user_logout`) or sensitive (`user_create`, `user_update`, `user_send_actions_email`, `user_group_add`, `user_role_assign`, `user_brute_force_unlock`). By default they only show a preview.
 
-**Fix.** This is the expected flow. Ask the human, then repeat the call with `confirm: true`. If a model sets `confirm: true` without asking, tighten your client's approval settings. `KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false` removes the preview step; do not do that for interactive use.
+**Fix.** This is the expected flow. Ask the human, then repeat the call with `confirm: true`. If a model sets `confirm: true` without asking, tighten your client's approval settings. `KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false` removes the preview step; do not do that for interactive use. If the message ends with "This confirmation cannot be turned off.", the call grants administrative rights, changes the profile of or sends action e-mails to an account with administrative rights, or targets the server's own account, and the setting does not apply.
+
+## Refusing to change the server's own account
+
+**Message.** `Refusing to change the roles of the account this server signs in with (user <id>). ...`
+
+**Cause.** The target user is the account the server logs in with. Role and group grants, `user_update` and `user_send_actions_email` are refused for it, so the server cannot extend its own rights.
+
+**Fix.** Make such changes in the Keycloak admin console.
 
 ## Realm not permitted
 

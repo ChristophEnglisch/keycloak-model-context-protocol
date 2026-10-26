@@ -107,6 +107,7 @@ describe("user_create", () => {
       username: "alice",
       email: "alice@example.com",
       firstName: "Alice",
+      confirm: true,
     });
     expect(h.kc.users.create).toHaveBeenCalledWith({
       realm: "shop",
@@ -126,7 +127,7 @@ describe("user_create", () => {
         responseData: { errorMessage: "User exists with same username" },
       }),
     );
-    const result = await h.call("user_create", { realm: "shop", username: "alice" });
+    const result = await h.call("user_create", { realm: "shop", username: "alice", confirm: true });
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain("User exists with same username");
   });
@@ -148,7 +149,7 @@ describe("user_create", () => {
 
     h = await startHarness({ allowMasterWrite: true });
     h.kc.users.create.mockResolvedValue({ id: "i" });
-    const allowed = await h.call("user_create", { realm: "master", username: "x" });
+    const allowed = await h.call("user_create", { realm: "master", username: "x", confirm: true });
     expect(allowed.isError).toBeFalsy();
   });
 });
@@ -159,7 +160,7 @@ describe("user_delete", () => {
     h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
     const result = await h.call("user_delete", { realm: "shop", userId: "u1" });
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toMatch(/delete user 'bob'.*confirm: true/s);
+    expect(textOf(result)).toMatch(/delete user "bob".*confirm: true/s);
     expect(h.kc.users.del).not.toHaveBeenCalled();
   });
 
@@ -174,6 +175,7 @@ describe("user_delete", () => {
 
   it("deletes with confirm: true", async () => {
     h = await startHarness();
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
     h.kc.users.del.mockResolvedValue(undefined);
     const result = await h.call("user_delete", { realm: "shop", userId: "u1", confirm: true });
     expect(result.isError).toBeFalsy();
@@ -183,6 +185,7 @@ describe("user_delete", () => {
 
   it("skips confirmation when KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false", async () => {
     h = await startHarness({ requireConfirmation: false });
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
     h.kc.users.del.mockResolvedValue(undefined);
     const result = await h.call("user_delete", { realm: "shop", userId: "u1" });
     expect(result.isError).toBeFalsy();
@@ -268,7 +271,7 @@ describe("user_get", () => {
 });
 
 describe("user_update", () => {
-  it("merges the changes into the current representation", async () => {
+  it("sends only the changed fields, not the current representation", async () => {
     h = await startHarness();
     const current = {
       id: "u1",
@@ -284,15 +287,16 @@ describe("user_update", () => {
       userId: "u1",
       email: "new@x.io",
       enabled: false,
+      confirm: true,
     });
     expect(h.kc.users.update).toHaveBeenCalledWith(
       { realm: "shop", id: "u1" },
-      { ...current, email: "new@x.io", enabled: false },
+      { email: "new@x.io", enabled: false, emailVerified: false },
     );
     expect(result.structuredContent).toEqual({
       userId: "u1",
       realm: "shop",
-      updatedFields: ["email", "enabled"],
+      updatedFields: ["email", "enabled", "emailVerified"],
     });
   });
 
@@ -306,7 +310,12 @@ describe("user_update", () => {
   it("fails for an unknown user and does not write", async () => {
     h = await startHarness();
     h.kc.users.findOne.mockResolvedValue(undefined);
-    const result = await h.call("user_update", { realm: "shop", userId: "ghost", enabled: true });
+    const result = await h.call("user_update", {
+      realm: "shop",
+      userId: "ghost",
+      enabled: true,
+      confirm: true,
+    });
     expect(result.isError).toBe(true);
     expect(h.kc.users.update).not.toHaveBeenCalled();
   });
@@ -324,6 +333,7 @@ describe("user_update", () => {
 describe("user_send_actions_email", () => {
   it("sends the e-mail with explicit realm and options", async () => {
     h = await startHarness();
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob", email: "bob@x.io" });
     h.kc.users.executeActionsEmail.mockResolvedValue(undefined);
     const result = await h.call("user_send_actions_email", {
       realm: "shop",
@@ -332,6 +342,7 @@ describe("user_send_actions_email", () => {
       lifespan: 3600,
       clientId: "web",
       redirectUri: "https://app.example/cb",
+      confirm: true,
     });
     expect(h.kc.users.executeActionsEmail).toHaveBeenCalledWith({
       realm: "shop",
@@ -363,10 +374,12 @@ describe("user_send_actions_email", () => {
         responseData: { errorMessage: "Failed to send execute actions email" },
       }),
     );
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob", email: "bob@x.io" });
     const failed = await h.call("user_send_actions_email", {
       realm: "shop",
       userId: "u1",
       actions: ["VERIFY_EMAIL"],
+      confirm: true,
     });
     expect(failed.isError).toBe(true);
   });

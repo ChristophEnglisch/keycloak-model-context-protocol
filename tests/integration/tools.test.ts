@@ -93,6 +93,7 @@ describeIt("all tools (happy path, master admin, in-memory client)", () => {
       email: `${newUsername}@it.example.test`,
       firstName: "Tool",
       lastName: "Test",
+      confirm: true,
     });
     expect(created.username).toBe(newUsername);
     newUserId = created.id;
@@ -113,6 +114,7 @@ describeIt("all tools (happy path, master admin, in-memory client)", () => {
       realm: REALM,
       userId: newUserId,
       firstName: "Changed",
+      confirm: true,
     });
     expect(result.updatedFields).toEqual(["firstName"]);
     const user = await ok<{ firstName?: string; lastName?: string }>("user_get", {
@@ -128,6 +130,7 @@ describeIt("all tools (happy path, master admin, in-memory client)", () => {
       realm: REALM,
       userId: newUserId,
       actions: ["UPDATE_PASSWORD"],
+      confirm: true,
     });
     // Keycloak cannot send mail without SMTP, so this cannot be a success here.
     expect(result.isError).toBe(true);
@@ -156,6 +159,7 @@ describeIt("all tools (happy path, master admin, in-memory client)", () => {
       realm: REALM,
       userId: newUserId,
       groupId: opsGroupId,
+      confirm: true,
     });
     expect(result.added).toBe(true);
     const page = await ok<Page<{ username: string }>>("group_members_list", {
@@ -211,6 +215,7 @@ describeIt("all tools (happy path, master admin, in-memory client)", () => {
       realm: REALM,
       userId: newUserId,
       roles: ["composite-role"],
+      confirm: true,
     });
     expect(result.assigned).toBe(true);
     const effective = await ok<{ realmRoles: { name: string }[] }>("user_roles_list", {
@@ -352,6 +357,7 @@ describeIt("all tools (happy path, master admin, in-memory client)", () => {
     const unlock = await ok<{ unlocked: boolean }>("user_brute_force_unlock", {
       realm: REALM,
       userId: lockyId,
+      confirm: true,
     });
     expect(unlock.unlocked).toBe(true);
     const after = await ok<{ disabled: boolean; numFailures: number }>("user_brute_force_status", {

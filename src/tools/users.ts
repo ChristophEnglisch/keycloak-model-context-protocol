@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { ToolError } from "../keycloak/errors.js";
-import { defineTool, pageOf, paginationShape, realmField, toPage } from "./shared.js";
+import {
+  adminRightsOfUser,
+  assertNotOwnAccount,
+  ownAccountPreview,
+  requireUser,
+  targetPreview,
+} from "./privileges.js";
+import { defineTool, pageOf, paginationShape, quoted, realmField, toPage } from "./shared.js";
 
 const userSummary = z.object({
   id: z.string().describe("User ID (UUID); use it as `userId` in other tools."),
@@ -34,6 +41,9 @@ export function toUserSummary(user: UserRep): z.infer<typeof userSummary> {
     ...(user.emailVerified !== undefined && { emailVerified: user.emailVerified }),
   };
 }
+
+/** Upper bound for the validity of links sent by user_send_actions_email: 24 hours. */
+export const MAX_ACTIONS_EMAIL_LIFESPAN = 86_400;
 
 // Pattern for list tools: paginationShape in, pageOf() out, query max + 1 and use toPage().
 const userSearch = defineTool({
@@ -79,8 +89,8 @@ const userCreate = defineTool({
   name: "user_create",
   title: "Create user",
   description:
-    "Create a new user in a realm. The user is enabled by default and has no credentials; use a separate flow to set a password or send required actions.",
-  kind: "write",
+    "Create a new user in a realm. The user is enabled by default and has no credentials; use a separate flow to set a password or send required actions. Requires confirm: true after the user approved the preview.",
+  kind: "sensitive",
   idempotent: false,
   input: z.object({
     realm: realmField,
@@ -96,6 +106,17 @@ const userCreate = defineTool({
     username: z.string().describe("Username of the created user."),
     realm: z.string().describe("Realm the user was created in."),
   }),
+  preview({ realm, username, email, firstName, lastName, enabled, emailVerified }) {
+    const details = [
+      enabled ? "enabled" : "disabled",
+      ...(email !== undefined
+        ? [`e-mail ${quoted(email)}${emailVerified === true ? " marked as verified" : ""}`]
+        : []),
+      ...(firstName !== undefined ? [`first name ${quoted(firstName)}`] : []),
+      ...(lastName !== undefined ? [`last name ${quoted(lastName)}`] : []),
+    ];
+    return `create user ${quoted(username)} (${details.join(", ")}) in realm '${realm}'.`;
+  },
   async handler(
     { realm, username, email, firstName, lastName, enabled, emailVerified },
     { gateway },
@@ -133,11 +154,17 @@ const userDelete = defineTool({
     userId: z.string().describe("ID of the deleted user."),
     realm: z.string().describe("Realm the user was deleted from."),
   }),
-  async preview({ realm, userId }, { gateway }) {
-    const user = await gateway.run((kc) => kc.users.findOne({ realm, id: userId }));
-    if (!user)
-      throw new ToolError("not_found", `User ${userId} does not exist in realm '${realm}'.`);
-    return `permanently delete user '${user.username ?? userId}' (id ${userId}) from realm '${realm}'.`;
+  async preview({ realm, userId }, { gateway, config }) {
+    return gateway.run(async (kc) => {
+      const user = await requireUser(kc, realm, userId);
+      return ownAccountPreview(
+        kc,
+        config,
+        realm,
+        user,
+        `permanently delete user ${quoted(user.username ?? userId)} (id ${userId}) from realm '${realm}'.`,
+      );
+    });
   },
   async handler({ realm, userId }, { gateway }) {
     await gateway.run((kc) => kc.users.del({ realm, id: userId }));
@@ -193,56 +220,99 @@ const userGet = defineTool({
   },
 });
 
+interface UserChanges {
+  email?: string | undefined;
+  firstName?: string | undefined;
+  lastName?: string | undefined;
+  enabled?: boolean | undefined;
+  emailVerified?: boolean | undefined;
+  requiredActions?: string[] | undefined;
+}
+
+/**
+ * The partial representation user_update sends: only the given fields. A new
+ * e-mail address is marked as unverified unless `emailVerified` is given.
+ */
+function plannedUpdate(current: UserRep, changes: UserChanges): Record<string, unknown> {
+  const update: Record<string, unknown> = Object.fromEntries(
+    Object.entries(changes).filter(([, v]) => v !== undefined),
+  );
+  const emailChanged =
+    changes.email !== undefined &&
+    changes.email.toLowerCase() !== (current.email ?? "").toLowerCase();
+  if (emailChanged && changes.emailVerified === undefined) update.emailVerified = false;
+  return update;
+}
+
+function previewValue(value: unknown): string {
+  if (value === undefined || value === null) return "(unset)";
+  if (typeof value === "string") return quoted(value);
+  if (Array.isArray(value)) return `[${value.map((v) => quoted(String(v))).join(", ")}]`;
+  return String(value);
+}
+
 const userUpdate = defineTool({
   name: "user_update",
   title: "Update user",
   description:
-    "Update selected fields of a user (partial update; omitted fields stay unchanged). At least one field besides realm and userId is required. Setting `requiredActions` replaces the existing list.",
-  kind: "write",
+    "Update selected fields of a user (partial update; only the given fields are sent, everything else stays unchanged). At least one field besides realm and userId is required. Setting `requiredActions` replaces the existing list. Changing `email` marks the address as unverified unless `emailVerified` is given. Requires confirm: true after the user approved the preview, which names the old and new values and whether the account has administrative rights; for such accounts the confirmation cannot be turned off. The account this server signs in with cannot be changed.",
+  kind: "sensitive",
   idempotent: true,
-  input: z
-    .object({
-      realm: realmField,
-      userId: z.string().min(1).describe("ID (UUID) of the user to update."),
-      email: z.email().optional().describe("New e-mail address."),
-      firstName: z.string().optional().describe("New first name."),
-      lastName: z.string().optional().describe("New last name."),
-      enabled: z.boolean().optional().describe("Enable or disable the user."),
-      emailVerified: z.boolean().optional().describe("Mark the e-mail as verified or not."),
-      requiredActions: z
-        .array(z.string().min(1))
-        .optional()
-        .describe("Required actions to set, e.g. UPDATE_PASSWORD (replaces the existing list)."),
-    })
-    .refine(
-      (v) =>
-        v.email !== undefined ||
-        v.firstName !== undefined ||
-        v.lastName !== undefined ||
-        v.enabled !== undefined ||
-        v.emailVerified !== undefined ||
-        v.requiredActions !== undefined,
-      { message: "Provide at least one field to update." },
-    ),
+  input: z.object({
+    realm: realmField,
+    userId: z.string().min(1).describe("ID (UUID) of the user to update."),
+    email: z
+      .email()
+      .optional()
+      .describe("New e-mail address. Marks the address as unverified unless emailVerified is set."),
+    firstName: z.string().optional().describe("New first name."),
+    lastName: z.string().optional().describe("New last name."),
+    enabled: z.boolean().optional().describe("Enable or disable the user."),
+    emailVerified: z.boolean().optional().describe("Mark the e-mail as verified or not."),
+    requiredActions: z
+      .array(z.string().min(1))
+      .optional()
+      .describe("Required actions to set, e.g. UPDATE_PASSWORD (replaces the existing list)."),
+  }),
   output: z.object({
     userId: z.string().describe("ID of the updated user."),
     realm: z.string().describe("Realm of the user."),
-    updatedFields: z.array(z.string()).describe("Names of the fields that were set."),
+    updatedFields: z
+      .array(z.string())
+      .describe("Names of the fields that were set, including emailVerified when it was reset."),
   }),
-  async handler({ realm, userId, ...changes }, { gateway }) {
-    const fields = Object.entries(changes).filter(([, v]) => v !== undefined);
-    if (fields.length === 0)
+  async preview({ realm, userId, ...changes }, { gateway, config }) {
+    if (Object.values(changes).every((v) => v === undefined))
       throw new ToolError("bad_request", "Provide at least one field to update.");
-    await gateway.run(async (kc) => {
-      // Keycloak's PUT replaces the representation, so merge into the current one.
-      const current = await kc.users.findOne({ realm, id: userId });
-      if (!current)
-        throw new ToolError("not_found", `User ${userId} does not exist in realm '${realm}'.`);
-      await kc.users.update({ realm, id: userId }, { ...current, ...Object.fromEntries(fields) });
+    return gateway.run(async (kc) => {
+      const current = await requireUser(kc, realm, userId);
+      assertNotOwnAccount(kc, config, realm, current, "change");
+      const update = plannedUpdate(current, changes);
+      const fields = Object.entries(update).map(
+        ([key, value]) =>
+          `${key} ${previewValue((current as Record<string, unknown>)[key])} -> ${previewValue(value)}`,
+      );
+      const rights = await adminRightsOfUser(kc, realm, userId);
+      return targetPreview(
+        `update user ${quoted(current.username ?? userId)} (id ${userId}) in realm '${realm}': ${fields.join(", ")}.`,
+        rights,
+      );
     });
+  },
+  async handler({ realm, userId, ...changes }, { gateway }) {
+    const update = await gateway.run(async (kc) => {
+      const current = await requireUser(kc, realm, userId);
+      const update = plannedUpdate(current, changes);
+      // Only the changed fields: Keycloak keeps everything that is not sent,
+      // so concurrent changes to other fields and attributes are not overwritten.
+      await kc.users.update({ realm, id: userId }, update);
+      return update;
+    });
+    const updatedFields = Object.keys(update);
+    const reset = update.emailVerified === false && changes.emailVerified === undefined;
     return {
-      data: { userId, realm, updatedFields: fields.map(([k]) => k) },
-      summary: `Updated ${fields.length} field(s) of user ${userId} in realm '${realm}'.`,
+      data: { userId, realm, updatedFields },
+      summary: `Updated ${updatedFields.length} field(s) of user ${userId} in realm '${realm}'${reset ? "; the new e-mail address is marked as unverified" : ""}.`,
     };
   },
 });
@@ -251,8 +321,8 @@ const userSendActionsEmail = defineTool({
   name: "user_send_actions_email",
   title: "Send required-actions e-mail",
   description:
-    "Send the user an e-mail with a link to perform required actions (e.g. update password, verify e-mail). Each call sends another e-mail. Requires SMTP to be configured in the realm and the user to have an e-mail address.",
-  kind: "write",
+    "Send the user an e-mail with a link to perform required actions (e.g. update password, verify e-mail). Whoever controls the e-mail address can use the link, so this requires confirm: true after the user approved the preview, which names the recipient address and whether the account has administrative rights; for such accounts the confirmation cannot be turned off. Each call sends another e-mail. Requires SMTP to be configured in the realm and the user to have an e-mail address. The account this server signs in with cannot be targeted.",
+  kind: "sensitive",
   idempotent: false,
   input: z.object({
     realm: realmField,
@@ -273,8 +343,11 @@ const userSendActionsEmail = defineTool({
       .number()
       .int()
       .min(1)
+      .max(MAX_ACTIONS_EMAIL_LIFESPAN)
       .optional()
-      .describe("Link validity in seconds (Keycloak default if omitted)."),
+      .describe(
+        `Link validity in seconds, at most ${MAX_ACTIONS_EMAIL_LIFESPAN} (24 hours). If omitted, the realm's setting for admin-initiated action links applies.`,
+      ),
     clientId: z
       .string()
       .min(1)
@@ -292,6 +365,29 @@ const userSendActionsEmail = defineTool({
     realm: z.string().describe("Realm of the user."),
     actions: z.array(z.string()).describe("Actions requested in the e-mail."),
   }),
+  async preview({ realm, userId, actions, lifespan, clientId, redirectUri }, { gateway, config }) {
+    return gateway.run(async (kc) => {
+      const user = await requireUser(kc, realm, userId);
+      assertNotOwnAccount(kc, config, realm, user, "send action e-mails for");
+      const recipient =
+        user.email === undefined || user.email === ""
+          ? "user without e-mail address (Keycloak will reject the request)"
+          : quoted(user.email);
+      const validity =
+        lifespan === undefined
+          ? "the realm's default validity"
+          : `a link valid for ${lifespan} second(s)`;
+      const redirect =
+        redirectUri === undefined
+          ? ""
+          : `, redirecting to ${quoted(redirectUri)} afterwards (client ${quoted(clientId ?? "")})`;
+      const rights = await adminRightsOfUser(kc, realm, userId);
+      return targetPreview(
+        `send an e-mail to ${recipient} asking user ${quoted(user.username ?? userId)} (id ${userId}) in realm '${realm}' to perform ${actions.join(", ")}, with ${validity}${redirect}.`,
+        rights,
+      );
+    });
+  },
   async handler({ realm, userId, actions, lifespan, clientId, redirectUri }, { gateway }) {
     await gateway.run((kc) =>
       kc.users.executeActionsEmail({

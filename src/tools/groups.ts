@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { ToolError } from "../keycloak/errors.js";
-import { defineTool, pageOf, paginationShape, realmField, toPage } from "./shared.js";
+import {
+  adminRightsOfGroup,
+  assertNotOwnAccount,
+  grantPreview,
+  ownAccountPreview,
+  requireUser,
+} from "./privileges.js";
+import { defineTool, pageOf, paginationShape, quoted, realmField, toPage } from "./shared.js";
 import { toUserSummary } from "./users.js";
 
 const groupSummary = z.object({
@@ -92,8 +99,8 @@ const userGroupAdd = defineTool({
   name: "user_group_add",
   title: "Add user to group",
   description:
-    "Add a user to a group. Adding a user who is already a member has no further effect.",
-  kind: "write",
+    "Add a user to a group. The user inherits the roles of the group and of all its parent groups, which can include administrative rights. Requires confirm: true after the user approved the preview. If the group grants administrative rights the preview says so and this confirmation cannot be turned off. The account this server signs in with cannot be added to groups. Adding a user who is already a member has no further effect.",
+  kind: "sensitive",
   idempotent: true,
   input: z.object({
     realm: realmField,
@@ -103,6 +110,20 @@ const userGroupAdd = defineTool({
   output: membershipOutput.extend({
     added: z.boolean().describe("True once the user is a member."),
   }),
+  async preview({ realm, userId, groupId }, { gateway, config }) {
+    return gateway.run(async (kc) => {
+      const user = await requireUser(kc, realm, userId);
+      assertNotOwnAccount(kc, config, realm, user, "change the group memberships of");
+      const group = await kc.groups.findOne({ realm, id: groupId });
+      if (!group)
+        throw new ToolError("not_found", `Group ${groupId} does not exist in realm '${realm}'.`);
+      const rights = await adminRightsOfGroup(kc, realm, { ...group, id: group.id ?? groupId });
+      return grantPreview(
+        `add user ${quoted(user.username ?? userId)} (id ${userId}) to group ${quoted(group.path ?? group.name ?? groupId)} in realm '${realm}'.`,
+        rights,
+      );
+    });
+  },
   async handler({ realm, userId, groupId }, { gateway }) {
     await gateway.run((kc) => kc.users.addToGroup({ realm, id: userId, groupId }));
     return {
@@ -127,18 +148,20 @@ const userGroupRemove = defineTool({
   output: membershipOutput.extend({
     removed: z.boolean().describe("True once the user is no member."),
   }),
-  async preview({ realm, userId, groupId }, { gateway }) {
-    const [user, group] = await gateway.run((kc) =>
-      Promise.all([
-        kc.users.findOne({ realm, id: userId }),
-        kc.groups.findOne({ realm, id: groupId }),
-      ]),
-    );
-    if (!user)
-      throw new ToolError("not_found", `User ${userId} does not exist in realm '${realm}'.`);
-    if (!group)
-      throw new ToolError("not_found", `Group ${groupId} does not exist in realm '${realm}'.`);
-    return `remove user '${user.username ?? userId}' from group '${group.path ?? group.name ?? groupId}' in realm '${realm}'.`;
+  async preview({ realm, userId, groupId }, { gateway, config }) {
+    return gateway.run(async (kc) => {
+      const user = await requireUser(kc, realm, userId);
+      const group = await kc.groups.findOne({ realm, id: groupId });
+      if (!group)
+        throw new ToolError("not_found", `Group ${groupId} does not exist in realm '${realm}'.`);
+      return ownAccountPreview(
+        kc,
+        config,
+        realm,
+        user,
+        `remove user ${quoted(user.username ?? userId)} from group ${quoted(group.path ?? group.name ?? groupId)} in realm '${realm}'.`,
+      );
+    });
   },
   async handler({ realm, userId, groupId }, { gateway }) {
     await gateway.run((kc) => kc.users.delFromGroup({ realm, id: userId, groupId }));

@@ -15,10 +15,19 @@ export interface ToolContext {
 
 /**
  * read:        no side effects (readOnlyHint)
- * write:       changes state, not destructive (create/update)
- * destructive: deletes or irreversibly changes state; requires `confirm: true`
+ * write:       changes state without touching identity, credentials, rights or protections
+ * sensitive:   changes identity, credentials, rights or protection mechanisms; preview and `confirm: true`
+ * destructive: deletes or irreversibly changes state; preview and `confirm: true`
+ *
+ * Sensitive and destructive tools are announced with destructiveHint, so clients
+ * that ask before destructive calls also ask before these.
  */
-export type ToolKind = "read" | "write" | "destructive";
+export type ToolKind = "read" | "write" | "sensitive" | "destructive";
+
+/** Kinds that get a `confirm` parameter, a preview and destructiveHint. */
+export function needsConfirmation(kind: ToolKind): boolean {
+  return kind === "sensitive" || kind === "destructive";
+}
 
 /** What the toolset registry needs to know; produced by defineTool(). */
 export interface ToolDefinition {
@@ -43,7 +52,7 @@ export const confirmField = z
   .boolean()
   .optional()
   .describe(
-    "Must be true to execute this destructive operation. Only set it after the user approved.",
+    "Must be true to execute this operation. Never set it on the first call: call without it, show the returned preview to the user and only set it after the user approved.",
   );
 
 export const paginationShape = {
@@ -83,6 +92,42 @@ export function toPage<T>(rows: readonly T[], first: number, max: number) {
 }
 
 // ---------------------------------------------------------------------------
+// Untrusted text
+// ---------------------------------------------------------------------------
+
+export const UNTRUSTED_MAX_LENGTH = 256;
+
+/** C0/C1 control characters and the Unicode bidi controls (marks, embeddings, overrides, isolates). */
+function isUnsafeCodePoint(code: number): boolean {
+  return (
+    code < 0x20 ||
+    (code >= 0x7f && code <= 0x9f) ||
+    code === 0x061c ||
+    code === 0x200e ||
+    code === 0x200f ||
+    (code >= 0x202a && code <= 0x202e) ||
+    (code >= 0x2066 && code <= 0x2069)
+  );
+}
+
+/**
+ * Neutralises free text that comes from Keycloak (and therefore possibly from
+ * an attacker): control characters and bidi controls become spaces, and text
+ * longer than `max` code points is cut and marked with `…[truncated]`.
+ */
+export function untrusted(value: string, max = UNTRUSTED_MAX_LENGTH): string {
+  const chars = Array.from(value, (char) =>
+    isUnsafeCodePoint(char.codePointAt(0) ?? 0) ? " " : char,
+  );
+  return chars.length > max ? `${chars.slice(0, max).join("")}…[truncated]` : chars.join("");
+}
+
+/** untrusted() plus JSON quoting, for embedding values in previews and other server sentences. */
+export function quoted(value: string, max = UNTRUSTED_MAX_LENGTH): string {
+  return JSON.stringify(untrusted(value, max));
+}
+
+// ---------------------------------------------------------------------------
 // Results and errors
 // ---------------------------------------------------------------------------
 
@@ -93,9 +138,20 @@ export interface ToolOutput<T> {
   summary: string;
 }
 
-export function toResult<T extends Record<string, unknown>>(output: ToolOutput<T>): CallToolResult {
+/**
+ * `executed` is the preview of a confirmable tool. It is echoed so the user can
+ * see what ran, also when the model set `confirm: true` on its first call.
+ */
+export function toResult<T extends Record<string, unknown>>(
+  output: ToolOutput<T>,
+  executed?: { preview: string; confirmed: boolean },
+): CallToolResult {
+  const text =
+    executed === undefined
+      ? output.summary
+      : `${output.summary}\n${executed.confirmed ? "Confirmed" : "Ran without confirmation (KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false)"}: ${executed.preview}`;
   return {
-    content: [{ type: "text", text: output.summary }],
+    content: [{ type: "text", text }],
     structuredContent: output.data,
   };
 }
@@ -120,13 +176,25 @@ export interface ToolSpec<I extends z.ZodObject, O extends z.ZodObject> {
   kind: ToolKind;
   /** Whether repeating the call with the same arguments has no further effect. Default: true for read/destructive, false for write. */
   idempotent?: boolean;
-  /** Zod object with `.describe()` on every field. Do NOT add `confirm`; destructive tools get it automatically. */
+  /** Zod object with `.describe()` on every field. Do NOT add `confirm`; sensitive and destructive tools get it automatically. */
   input: I;
   output: O;
-  /** Required for destructive tools: one sentence describing what would happen (shown before confirmation). */
-  preview?: (args: z.infer<I>, ctx: ToolContext) => string | Promise<string>;
+  /**
+   * Required for sensitive and destructive tools: one sentence describing what
+   * would happen. Runs on every call, also with `confirm: true`, and may reject
+   * the call by throwing. Quote Keycloak free text with quoted().
+   */
+  preview?: (args: z.infer<I>, ctx: ToolContext) => PreviewResult | Promise<PreviewResult>;
   handler: (args: z.infer<I>, ctx: ToolContext) => Promise<ToolOutput<z.infer<O>>>;
 }
+
+export interface Preview {
+  text: string;
+  /** Confirmation required even with KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false. */
+  unconditional?: boolean;
+}
+
+export type PreviewResult = string | Preview;
 
 type Auditable = { realm?: unknown; confirm?: unknown };
 
@@ -139,20 +207,22 @@ const PATH_SEGMENT_FIELDS = new Set(["realm", "id", "userId", "groupId"]);
 /**
  * Builds a tool with all cross-cutting behaviour applied uniformly:
  * annotations, realm guards (allowlist, master write protection), path segment
- * validation, confirmation for destructive tools, error mapping to isError,
+ * validation, preview and confirmation for sensitive and destructive tools,
+ * error mapping to isError,
  * and one audit log line per call (no arguments or PII logged).
  */
 export function defineTool<I extends z.ZodObject, O extends z.ZodObject>(
   spec: ToolSpec<I, O>,
 ): ToolDefinition {
-  const destructive = spec.kind === "destructive";
-  if (destructive && !spec.preview) {
-    throw new Error(`Tool ${spec.name}: destructive tools must define preview()`);
+  const confirmable = needsConfirmation(spec.kind);
+  const preview = spec.preview;
+  if (confirmable && !preview) {
+    throw new Error(`Tool ${spec.name}: ${spec.kind} tools must define preview()`);
   }
-  if (destructive && "confirm" in spec.input.shape) {
-    throw new Error(`Tool ${spec.name}: 'confirm' is added automatically for destructive tools`);
+  if (confirmable && "confirm" in spec.input.shape) {
+    throw new Error(`Tool ${spec.name}: 'confirm' is added automatically for ${spec.kind} tools`);
   }
-  const inputSchema = destructive ? spec.input.extend({ confirm: confirmField }) : spec.input;
+  const inputSchema = confirmable ? spec.input.extend({ confirm: confirmField }) : spec.input;
   const pathKeys = Object.keys(spec.input.shape).filter((key) => PATH_SEGMENT_FIELDS.has(key));
   const write = spec.kind !== "read";
 
@@ -170,14 +240,16 @@ export function defineTool<I extends z.ZodObject, O extends z.ZodObject>(
           annotations: {
             title: spec.title,
             readOnlyHint: spec.kind === "read",
-            destructiveHint: destructive,
+            destructiveHint: confirmable,
             idempotentHint: spec.idempotent ?? spec.kind !== "write",
             openWorldHint: false,
           },
         },
         async (rawArgs): Promise<CallToolResult> => {
           const started = Date.now();
-          const args = rawArgs as z.infer<I> & Auditable;
+          const { confirm, ...rest } = rawArgs as z.infer<I> & Auditable;
+          // Handlers and previews never see `confirm`, so it cannot leak into a request body.
+          const args = rest as z.infer<I> & Auditable;
           const realm = typeof args.realm === "string" ? args.realm : undefined;
           let outcome = "ok";
           try {
@@ -186,11 +258,20 @@ export function defineTool<I extends z.ZodObject, O extends z.ZodObject>(
               if (typeof value === "string") assertPathSegment(value, key);
             }
             if (realm !== undefined) assertRealmAllowed(ctx.config, realm, { write });
-            if (destructive && ctx.config.requireConfirmation && args.confirm !== true) {
-              const preview = await (spec.preview as NonNullable<typeof spec.preview>)(args, ctx);
-              requireConfirmation(ctx.config, args.confirm === true, preview);
+            let executed: { preview: string; confirmed: boolean } | undefined;
+            if (confirmable && preview) {
+              // Always computed, also with confirm: true on the first call, so
+              // rejections apply and the result shows what was executed.
+              const result = await preview(args, ctx);
+              const { text, unconditional } =
+                typeof result === "string" ? { text: result } : result;
+              const confirmed = confirm === true;
+              requireConfirmation(ctx.config, confirmed, text, {
+                unconditional: unconditional === true,
+              });
+              executed = { preview: text, confirmed };
             }
-            return toResult(await spec.handler(args, ctx));
+            return toResult(await spec.handler(args, ctx), executed);
           } catch (error) {
             const toolError = mapKeycloakError(error, {
               baseUrl: ctx.config.url,

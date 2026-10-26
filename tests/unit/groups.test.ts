@@ -76,10 +76,17 @@ describe("group_members_list", () => {
 });
 
 describe("user_group_add", () => {
-  it("adds the user to the group", async () => {
+  it("adds the user to the group after confirmation", async () => {
     h = await startHarness();
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
+    h.kc.groups.findOne.mockResolvedValue({ id: "g1", name: "devs", path: "/devs" });
     h.kc.users.addToGroup.mockResolvedValue("");
-    const result = await h.call("user_group_add", { realm: "shop", userId: "u1", groupId: "g1" });
+    const result = await h.call("user_group_add", {
+      realm: "shop",
+      userId: "u1",
+      groupId: "g1",
+      confirm: true,
+    });
     expect(h.kc.users.addToGroup).toHaveBeenCalledWith({ realm: "shop", id: "u1", groupId: "g1" });
     expect(result.structuredContent).toEqual({
       userId: "u1",
@@ -108,12 +115,14 @@ describe("user_group_remove", () => {
       groupId: "g1",
     });
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toMatch(/remove user 'bob' from group '\/eng\/devs'.*confirm: true/s);
+    expect(textOf(result)).toMatch(/remove user "bob" from group "\/eng\/devs".*confirm: true/s);
     expect(h.kc.users.delFromGroup).not.toHaveBeenCalled();
   });
 
   it("removes with confirm: true", async () => {
     h = await startHarness();
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
+    h.kc.groups.findOne.mockResolvedValue({ id: "g1", name: "devs", path: "/eng/devs" });
     h.kc.users.delFromGroup.mockResolvedValue("");
     const result = await h.call("user_group_remove", {
       realm: "shop",

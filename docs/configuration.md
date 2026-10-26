@@ -53,7 +53,7 @@ Boolean values accept `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off` (case-inse
 | `KEYCLOAK_MCP_READ_ONLY` | no | `false` | no | Register only tools of kind *read*. Write and destructive tools do not exist for the client. | `true` |
 | `KEYCLOAK_MCP_REALMS` | no | empty (all realms) | no | Comma-separated allowlist of target realms. Applies to tools, resources, prompts and completions. | `demo,staging` |
 | `KEYCLOAK_MCP_ALLOW_MASTER_WRITE` | no | `false` | no | Allow write and destructive tools in the `master` realm. | `false` |
-| `KEYCLOAK_MCP_REQUIRE_CONFIRMATION` | no | `true` | no | Destructive tools (and granting admin roles) require `confirm: true`. | `true` |
+| `KEYCLOAK_MCP_REQUIRE_CONFIRMATION` | no | `true` | no | Destructive and sensitive tools require `confirm: true`. `false` turns this off, except for grants of administrative rights, profile changes and action e-mails for accounts with administrative rights, and changes to the server's own account. | `true` |
 | `KEYCLOAK_MCP_TIMEOUT_MS` | no | `30000` | no | HTTP timeout for requests to Keycloak, in milliseconds (integer, at least 1). | `15000` |
 | `KEYCLOAK_MCP_LOG_LEVEL` | no | `info` | no | `debug`, `info`, `warn` or `error`. Logs go to stderr. | `warn` |
 
@@ -132,11 +132,11 @@ Prompts that need tools from a non-default toolset (`audit_realm_security`, `inv
 | **Read-only** (`KEYCLOAK_MCP_READ_ONLY=true`) | Only tools of kind *read* are registered; the 10 write and destructive tools never appear in `tools/list`. This is the strongest control and independent of Keycloak roles. |
 | **Realm allowlist** (`KEYCLOAK_MCP_REALMS`) | Calls for a realm outside the list are rejected before any request is sent. `realm_list`, the `keycloak://realms` resource and prompt completion only show allowed realms. Empty means every realm. |
 | **`master` write protection** (`KEYCLOAK_MCP_ALLOW_MASTER_WRITE=false`) | Write and destructive tools reject the realm `master` (case-insensitive). Reads still work. Set to `true` only if you really administer `master` through the assistant. |
-| **Confirmation** (`KEYCLOAK_MCP_REQUIRE_CONFIRMATION=true`) | Destructive tools (`user_delete`, `user_group_remove`, `user_role_revoke`, `user_logout`) first return a preview and change nothing; the assistant must repeat the call with `confirm: true` after you approved. `user_role_assign` additionally requires `confirm: true` when it would grant administrative roles (the realm roles `admin` or `create-realm`, any role of the client `realm-management`, `realm-admin`, or any role named `manage-*`). |
+| **Confirmation** (`KEYCLOAK_MCP_REQUIRE_CONFIRMATION=true`) | Destructive tools (`user_delete`, `user_group_remove`, `user_role_revoke`, `user_logout`) and sensitive tools (`user_create`, `user_update`, `user_send_actions_email`, `user_group_add`, `user_role_assign`, `user_brute_force_unlock`) first return a preview and change nothing; the assistant must repeat the call with `confirm: true` after you approved. Grants of administrative rights, also through composite roles and parent groups, `user_update` and `user_send_actions_email` for accounts with administrative rights, and changes to the server's own account always need confirmation; see [security](security.md#sensitive-writes). |
 | **Path-segment validation** | Realm names and IDs containing `/`, `\`, `..` or control characters are rejected, so arguments cannot redirect a request to another API path. |
 
 > [!WARNING]
-> `KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false` removes the preview step. Your MCP client may still ask you to approve each tool call, but the server will no longer enforce it. Keep the default unless you run unattended automation in a disposable environment.
+> `KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false` removes the preview step for ordinary changes. Your MCP client may still ask you to approve each tool call, but the server will no longer enforce it. Grants of administrative rights, profile changes and action e-mails for accounts with administrative rights, and changes to the server's own account still need `confirm: true`. Keep the default unless you run unattended automation in a disposable environment.
 
 ## Timeouts and logging
 
@@ -157,17 +157,17 @@ All roles are **client roles of the `realm-management` client** of the target re
 | `realm_get` | core | read | `view-realm` | |
 | `user_search` | core | read | `query-users` | `view-users` also works; `query-users` is the narrower role. |
 | `user_get` | core | read | `view-users` | |
-| `user_create` | core | write | `manage-users` | |
-| `user_update` | core | write | `manage-users` | `manage-users` implies view access to users. |
+| `user_create` | core | sensitive | `manage-users` | |
+| `user_update` | core | sensitive | `manage-users` | `manage-users` implies view access to users. Without `view-clients` the preview cannot tell whether the account has administrative rights. |
 | `user_delete` | core | destructive | `manage-users` | |
-| `user_send_actions_email` | core | write | `manage-users` | *Assumed.* Also needs SMTP configured in the realm. |
+| `user_send_actions_email` | core | sensitive | `manage-users` | *Assumed.* Also needs SMTP configured in the realm. Without `view-clients` the preview cannot tell whether the account has administrative rights. |
 | `group_list` | groups | read | `query-groups` | |
 | `group_members_list` | groups | read | `view-users` | |
-| `user_group_add` | groups | write | `manage-users` | |
+| `user_group_add` | groups | sensitive | `manage-users` | Without `view-clients` Keycloak hides client roles of groups, so every group membership needs a confirmation that cannot be turned off. |
 | `user_group_remove` | groups | destructive | `manage-users` | |
 | `role_list` | roles | read | `view-realm` | |
 | `user_roles_list` | roles | read | `view-users` | |
-| `user_role_assign` | roles | write | `manage-users` + `view-realm` | `manage-users` maps the role; `view-realm` lets the tool look the role up by name. |
+| `user_role_assign` | roles | sensitive | `manage-users` + `view-realm` | `manage-users` maps the role; `view-realm` lets the tool look the role up by name. Without `view-clients`, composite roles need a confirmation that cannot be turned off. |
 | `user_role_revoke` | roles | destructive | `manage-users` + `view-realm` | Same as `user_role_assign`. |
 | `client_list` | clients | read | `query-clients` | Without it, Keycloak before 26.8 returns only clients the account holds roles of instead of HTTP 403. |
 | `client_get` | clients | read | `view-clients` | Without it, Keycloak before 26.8 reports the client as not found; the error message names the missing role. |
@@ -176,7 +176,7 @@ All roles are **client roles of the `realm-management` client** of the target re
 | `event_list` | events | read | `view-events` | Realm event storage must be enabled. |
 | `admin_event_list` | events | read | `view-events` | Realm admin events must be enabled. |
 | `user_brute_force_status` | security | read | `view-users` | |
-| `user_brute_force_unlock` | security | write | `manage-users` | |
+| `user_brute_force_unlock` | security | sensitive | `manage-users` | |
 
 Keep in mind:
 
@@ -211,7 +211,7 @@ Joiner/mover/leaver work: create and change users, memberships and roles, end se
 | `KEYCLOAK_MCP_REQUIRE_CONFIRMATION` | `true` (default) |
 | `KEYCLOAK_MCP_REALMS` | the realm(s) you administer |
 
-`manage-users` already lets the account assign roles, including powerful ones. The server asks for confirmation before granting administrative roles, but the real protection is not giving the service account roles you would not want it to hand out.
+`manage-users` already lets the account assign roles, including powerful ones, and change any user of the realm, including administrators. The server resolves composite roles and groups and always asks for confirmation before granting administrative rights or changing the profile or sending action e-mails for an account with administrative rights, and it refuses to extend its own account. Add `view-clients` if the server should rule out administrative rights in composite roles and groups precisely; without it, such grants and target accounts are treated as administrative, so every `user_update` and `user_send_actions_email` needs confirmation. The real protection is still not giving the service account roles you would not want it to hand out.
 
 ### Auditor
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { defineTool, realmField } from "./shared.js";
+import { ownAccountPreview, requireUser } from "./privileges.js";
+import { defineTool, quoted, realmField } from "./shared.js";
 
 const userIdField = z.string().min(1).describe("ID (UUID) of the user, e.g. from user_search.");
 
@@ -42,8 +43,8 @@ const userBruteForceUnlock = defineTool({
   name: "user_brute_force_unlock",
   title: "Unlock user (brute-force)",
   description:
-    "Clear the brute-force detection state of a user so a temporarily locked account can log in again. Does not change the user's enabled flag.",
-  kind: "write",
+    "Clear the brute-force detection state of a user so a temporarily locked account can log in again. This lifts a protection against password guessing, so it requires confirm: true after the user approved the preview. Does not change the user's enabled flag.",
+  kind: "sensitive",
   idempotent: true,
   input: z.object({ realm: realmField, userId: userIdField }),
   output: z.object({
@@ -51,6 +52,23 @@ const userBruteForceUnlock = defineTool({
     userId: z.string().describe("User that was unlocked."),
     realm: z.string().describe("Realm of the user."),
   }),
+  async preview({ realm, userId }, { gateway, config }) {
+    return gateway.run(async (kc) => {
+      const user = await requireUser(kc, realm, userId);
+      const st = await kc.attackDetection.findOne({ realm, id: userId });
+      const state =
+        st?.disabled === true
+          ? `currently locked after ${typeof st.numFailures === "number" ? st.numFailures : "?"} failed login(s)`
+          : "currently not locked";
+      return ownAccountPreview(
+        kc,
+        config,
+        realm,
+        user,
+        `clear the brute-force lockout of user ${quoted(user.username ?? userId)} (id ${userId}, ${state}) in realm '${realm}'.`,
+      );
+    });
+  },
   async handler({ realm, userId }, { gateway }) {
     await gateway.run((kc) => kc.attackDetection.del({ realm, id: userId }));
     return {

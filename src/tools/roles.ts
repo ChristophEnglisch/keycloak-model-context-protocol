@@ -1,8 +1,18 @@
 import type KcAdminClient from "@keycloak/keycloak-admin-client";
 import { z } from "zod";
-import { assertPathSegment, requireConfirmation } from "../guards.js";
+import { assertPathSegment } from "../guards.js";
 import { ToolError } from "../keycloak/errors.js";
-import { defineTool, pageOf, paginationShape, realmField, toPage } from "./shared.js";
+import {
+  adminRightsOfRoles,
+  assertNotOwnAccount,
+  grantPreview,
+  ownAccountPreview,
+  type RoleRef,
+  requireUser,
+} from "./privileges.js";
+import { defineTool, pageOf, paginationShape, quoted, realmField, toPage } from "./shared.js";
+
+export { isPrivilegedRole } from "./privileges.js";
 
 const roleSummary = z.object({
   name: z.string().describe("Role name."),
@@ -165,7 +175,7 @@ const userRolesList = defineTool({
 // Assign / revoke
 // ---------------------------------------------------------------------------
 
-interface ResolvedRole {
+interface ResolvedRole extends RoleRef {
   id: string;
   name: string;
 }
@@ -186,7 +196,7 @@ async function resolveRoles(
       clientUuid === undefined
         ? await kc.roles.findOneByName({ realm, name })
         : await kc.clients.findRole({ realm, id: clientUuid, roleName: name });
-    if (rep?.id) roles.push({ id: rep.id, name });
+    if (rep?.id) roles.push({ ...rep, id: rep.id, name });
     else missing.push(name);
   }
   if (missing.length > 0) {
@@ -200,11 +210,13 @@ async function resolveRoles(
   return clientUuid === undefined ? { roles } : { roles, clientUuid };
 }
 
-/** Roles that grant administrative power over the realm. */
-export function isPrivilegedRole(name: string, clientId: string | undefined): boolean {
-  if (clientId === undefined) return name === "admin" || name === "create-realm";
-  return clientId === "realm-management" || name === "realm-admin" || name.startsWith("manage-");
-}
+/** Only id and name go to Keycloak when mapping roles. */
+const roleRefs = (roles: readonly ResolvedRole[]) => roles.map(({ id, name }) => ({ id, name }));
+
+const roleScope = (clientId: string | undefined) =>
+  clientId === undefined ? "realm" : `client ${quoted(clientId)}`;
+
+const roleNames = (names: readonly string[]) => names.map((n) => quoted(n)).join(", ");
 
 const rolesField = z
   .array(z.string().min(1))
@@ -223,44 +235,41 @@ const userRoleAssign = defineTool({
   name: "user_role_assign",
   title: "Assign roles to user",
   description:
-    "Assign realm roles (or roles of one client when `clientId` is given) to a user. Unknown roles abort the call without changes. Assigning administrative roles (realm role admin/create-realm, any role of client realm-management, realm-admin or manage-*) additionally requires confirm: true after the user approved.",
-  kind: "write",
+    "Assign realm roles (or roles of one client when `clientId` is given) to a user. Unknown roles abort the call without changes. Requires confirm: true after the user approved the preview. If the roles grant administrative rights, directly or through composite roles, the preview says so and this confirmation cannot be turned off. Roles of the account this server signs in with cannot be changed.",
+  kind: "sensitive",
   idempotent: true,
   input: z.object({
     realm: realmField,
     userId: z.string().min(1).describe("ID (UUID) of the user."),
     roles: rolesField,
     clientId: clientIdField,
-    confirm: z
-      .boolean()
-      .optional()
-      .describe(
-        "Must be true to assign administrative roles. Only set it after the user approved.",
-      ),
   }),
   output: roleMutationOutput.extend({
     assigned: z.boolean().describe("True once the roles are assigned."),
   }),
-  async handler({ realm, userId, roles: names, clientId, confirm }, { gateway, config }) {
+  async preview({ realm, userId, roles: names, clientId }, { gateway, config }) {
+    return gateway.run(async (kc) => {
+      const user = await requireUser(kc, realm, userId);
+      assertNotOwnAccount(kc, config, realm, user, "change the roles of");
+      const found = await resolveRoles(kc, realm, names, clientId);
+      const rights = await adminRightsOfRoles(kc, realm, found.roles, clientId);
+      return grantPreview(
+        `assign ${roleScope(clientId)} role(s) ${roleNames(found.roles.map((r) => r.name))} to user ${quoted(user.username ?? userId)} (id ${userId}) in realm '${realm}'.`,
+        rights,
+      );
+    });
+  },
+  async handler({ realm, userId, roles: names, clientId }, { gateway }) {
     const resolved = await gateway.run(async (kc) => {
       const found = await resolveRoles(kc, realm, names, clientId);
-      const privileged = found.roles.filter((r) => isPrivilegedRole(r.name, clientId));
-      if (privileged.length > 0) {
-        const list = privileged.map((r) => r.name).join(", ");
-        requireConfirmation(
-          config,
-          confirm,
-          `grant the administrative role(s) ${list} to user ${userId} in realm '${realm}'.`,
-        );
-      }
       if (found.clientUuid === undefined) {
-        await kc.users.addRealmRoleMappings({ realm, id: userId, roles: found.roles });
+        await kc.users.addRealmRoleMappings({ realm, id: userId, roles: roleRefs(found.roles) });
       } else {
         await kc.users.addClientRoleMappings({
           realm,
           id: userId,
           clientUniqueId: found.clientUuid,
-          roles: found.roles,
+          roles: roleRefs(found.roles),
         });
       }
       return found.roles;
@@ -289,24 +298,29 @@ const userRoleRevoke = defineTool({
   output: roleMutationOutput.extend({
     revoked: z.boolean().describe("True once the roles are removed."),
   }),
-  async preview({ realm, userId, roles, clientId }, { gateway }) {
-    const user = await gateway.run((kc) => kc.users.findOne({ realm, id: userId }));
-    if (!user)
-      throw new ToolError("not_found", `User ${userId} does not exist in realm '${realm}'.`);
-    const scope = clientId === undefined ? "realm" : `client '${clientId}'`;
-    return `remove ${scope} role(s) ${roles.join(", ")} from user '${user.username ?? userId}' in realm '${realm}'.`;
+  async preview({ realm, userId, roles, clientId }, { gateway, config }) {
+    return gateway.run(async (kc) => {
+      const user = await requireUser(kc, realm, userId);
+      return ownAccountPreview(
+        kc,
+        config,
+        realm,
+        user,
+        `remove ${roleScope(clientId)} role(s) ${roleNames(roles)} from user ${quoted(user.username ?? userId)} in realm '${realm}'.`,
+      );
+    });
   },
   async handler({ realm, userId, roles: names, clientId }, { gateway }) {
     const resolved = await gateway.run(async (kc) => {
       const found = await resolveRoles(kc, realm, names, clientId);
       if (found.clientUuid === undefined) {
-        await kc.users.delRealmRoleMappings({ realm, id: userId, roles: found.roles });
+        await kc.users.delRealmRoleMappings({ realm, id: userId, roles: roleRefs(found.roles) });
       } else {
         await kc.users.delClientRoleMappings({
           realm,
           id: userId,
           clientUniqueId: found.clientUuid,
-          roles: found.roles,
+          roles: roleRefs(found.roles),
         });
       }
       return found.roles;

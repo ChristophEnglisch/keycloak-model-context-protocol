@@ -21,7 +21,7 @@ const MINE = {
   event_list: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
   admin_event_list: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
   user_brute_force_status: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-  user_brute_force_unlock: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+  user_brute_force_unlock: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
 } as const;
 
 describe("clients/sessions/events/security tools in tools/list", () => {
