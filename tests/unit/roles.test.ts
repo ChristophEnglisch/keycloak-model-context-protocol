@@ -132,12 +132,14 @@ describe("user_roles_list", () => {
 describe("user_role_assign", () => {
   it("assigns resolved realm roles with explicit realm", async () => {
     h = await startHarness();
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
     h.kc.roles.findOneByName.mockResolvedValue({ id: "r1", name: "editor" });
     h.kc.users.addRealmRoleMappings.mockResolvedValue(undefined);
     const result = await h.call("user_role_assign", {
       realm: "shop",
       userId: "u1",
       roles: ["editor"],
+      confirm: true,
     });
     expect(h.kc.roles.findOneByName).toHaveBeenCalledWith({ realm: "shop", name: "editor" });
     expect(h.kc.users.addRealmRoleMappings).toHaveBeenCalledWith({
@@ -155,6 +157,7 @@ describe("user_role_assign", () => {
 
   it("assigns client roles via clientId lookup", async () => {
     h = await startHarness();
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
     h.kc.clients.find.mockResolvedValue([{ id: "uuid-1", clientId: "web" }]);
     h.kc.clients.findRole.mockResolvedValue({ id: "c1", name: "use" });
     h.kc.users.addClientRoleMappings.mockResolvedValue(undefined);
@@ -163,6 +166,7 @@ describe("user_role_assign", () => {
       userId: "u1",
       roles: ["use"],
       clientId: "web",
+      confirm: true,
     });
     expect(h.kc.clients.findRole).toHaveBeenCalledWith({
       realm: "shop",
@@ -180,6 +184,7 @@ describe("user_role_assign", () => {
 
   it("fails clearly on unknown roles without assigning anything", async () => {
     h = await startHarness();
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
     h.kc.roles.findOneByName.mockImplementation(async (payload) =>
       payload?.name === "editor" ? { id: "r1", name: "editor" } : undefined,
     );
@@ -201,6 +206,7 @@ describe("user_role_assign", () => {
     ["manage-users", "other"],
   ])("requires confirm for privileged role %s (client %s)", async (role, clientId) => {
     h = await startHarness();
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
     h.kc.clients.find.mockResolvedValue([{ id: "uuid-1", clientId }]);
     h.kc.clients.findRole.mockResolvedValue({ id: "c1", name: role });
     h.kc.roles.findOneByName.mockResolvedValue({ id: "r1", name: role });
@@ -210,7 +216,7 @@ describe("user_role_assign", () => {
 
     const blocked = await h.call("user_role_assign", args);
     expect(blocked.isError).toBe(true);
-    expect(textOf(blocked)).toMatch(/administrative role.*confirm: true/s);
+    expect(textOf(blocked)).toMatch(/administrative rights.*confirm: true.*cannot be turned off/s);
     expect(h.kc.users.addRealmRoleMappings).not.toHaveBeenCalled();
     expect(h.kc.users.addClientRoleMappings).not.toHaveBeenCalled();
 
@@ -220,6 +226,7 @@ describe("user_role_assign", () => {
 
   it("treats confirm: false like a missing confirmation for privileged roles", async () => {
     h = await startHarness();
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
     h.kc.roles.findOneByName.mockResolvedValue({ id: "r1", name: "admin" });
     const result = await h.call("user_role_assign", {
       realm: "shop",
@@ -228,12 +235,13 @@ describe("user_role_assign", () => {
       confirm: false,
     });
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toMatch(/administrative role.*confirm: true/s);
+    expect(textOf(result)).toMatch(/administrative rights.*confirm: true.*cannot be turned off/s);
     expect(h.kc.users.addRealmRoleMappings).not.toHaveBeenCalled();
   });
 
   it("rejects a dot segment as role name before any lookup", async () => {
     h = await startHarness();
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
     const result = await h.call("user_role_assign", { realm: "shop", userId: "u1", roles: [".."] });
     expect(result.isError).toBe(true);
     expect(textOf(result)).toMatch(/Invalid role name/);
@@ -241,20 +249,37 @@ describe("user_role_assign", () => {
     expect(h.kc.users.addRealmRoleMappings).not.toHaveBeenCalled();
   });
 
-  it("does not require confirm for ordinary roles or when confirmation is disabled", async () => {
+  it("assigns ordinary roles without confirm when confirmation is disabled", async () => {
     h = await startHarness({ requireConfirmation: false });
-    h.kc.roles.findOneByName.mockResolvedValue({ id: "r1", name: "admin" });
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
+    h.kc.roles.findOneByName.mockResolvedValue({ id: "r1", name: "editor" });
     h.kc.users.addRealmRoleMappings.mockResolvedValue(undefined);
+    const result = await h.call("user_role_assign", {
+      realm: "shop",
+      userId: "u1",
+      roles: ["editor"],
+    });
+    expect(result.isError).toBeFalsy();
+    expect(textOf(result)).toMatch(/without confirmation.*assign realm role\(s\) "editor"/s);
+  });
+
+  it("still requires confirm for administrative roles when confirmation is disabled", async () => {
+    h = await startHarness({ requireConfirmation: false });
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
+    h.kc.roles.findOneByName.mockResolvedValue({ id: "r1", name: "admin" });
     const result = await h.call("user_role_assign", {
       realm: "shop",
       userId: "u1",
       roles: ["admin"],
     });
-    expect(result.isError).toBeFalsy();
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toMatch(/administrative rights: "admin".*cannot be turned off/s);
+    expect(h.kc.users.addRealmRoleMappings).not.toHaveBeenCalled();
   });
 
   it("is blocked in master", async () => {
     h = await startHarness();
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
     const result = await h.call("user_role_assign", { realm: "master", userId: "u", roles: ["x"] });
     expect(result.isError).toBe(true);
     expect(h.kc.users.addRealmRoleMappings).not.toHaveBeenCalled();
@@ -265,18 +290,22 @@ describe("user_role_revoke", () => {
   it("previews without revoking", async () => {
     h = await startHarness();
     h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
     const result = await h.call("user_role_revoke", {
       realm: "shop",
       userId: "u1",
       roles: ["editor"],
     });
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toMatch(/remove realm role\(s\) editor from user 'bob'.*confirm: true/s);
+    expect(textOf(result)).toMatch(
+      /remove realm role\(s\) "editor" from user "bob".*confirm: true/s,
+    );
     expect(h.kc.users.delRealmRoleMappings).not.toHaveBeenCalled();
   });
 
   it("revokes realm roles with confirm: true", async () => {
     h = await startHarness();
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
     h.kc.roles.findOneByName.mockResolvedValue({ id: "r1", name: "editor" });
     h.kc.users.delRealmRoleMappings.mockResolvedValue(undefined);
     const result = await h.call("user_role_revoke", {
@@ -295,6 +324,7 @@ describe("user_role_revoke", () => {
 
   it("revokes client roles with confirm: true", async () => {
     h = await startHarness();
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
     h.kc.clients.find.mockResolvedValue([{ id: "uuid-1", clientId: "web" }]);
     h.kc.clients.findRole.mockResolvedValue({ id: "c1", name: "use" });
     h.kc.users.delClientRoleMappings.mockResolvedValue(undefined);
@@ -315,6 +345,7 @@ describe("user_role_revoke", () => {
 
   it("rejects a dot segment as client role name even when confirmed", async () => {
     h = await startHarness();
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
     h.kc.clients.find.mockResolvedValue([{ id: "uuid-1", clientId: "web" }]);
     const result = await h.call("user_role_revoke", {
       realm: "shop",
@@ -331,6 +362,7 @@ describe("user_role_revoke", () => {
 
   it("errors on unknown roles even when confirmed", async () => {
     h = await startHarness();
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
     h.kc.roles.findOneByName.mockResolvedValue(undefined);
     const result = await h.call("user_role_revoke", {
       realm: "shop",

@@ -31,6 +31,7 @@ describeIt("error handling against a real Keycloak", () => {
     const result = await server.call("user_create", {
       realm: REALM,
       username: USERS.alice.username,
+      confirm: true,
     });
     expect(result.isError).toBe(true);
     const text = textOf(result);
@@ -41,7 +42,7 @@ describeIt("error handling against a real Keycloak", () => {
     const { adminPassword } = keycloak();
     const results = await Promise.all([
       server.call("user_get", { realm: REALM, userId: "00000000-0000-0000-0000-000000000000" }),
-      server.call("user_create", { realm: REALM, username: USERS.alice.username }),
+      server.call("user_create", { realm: REALM, username: USERS.alice.username, confirm: true }),
       server.call("user_search", { realm: "no-such-realm" }),
     ]);
     for (const result of results) {

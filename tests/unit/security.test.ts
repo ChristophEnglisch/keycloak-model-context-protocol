@@ -50,10 +50,22 @@ describe("user_brute_force_status", () => {
 });
 
 describe("user_brute_force_unlock", () => {
-  it("clears the state for the user", async () => {
+  it("clears the state for the user after confirmation", async () => {
     h = await start();
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "locky" });
+    h.kc.attackDetection.findOne.mockResolvedValue({ disabled: true, numFailures: 5 });
     h.kc.attackDetection.del.mockResolvedValue(undefined);
-    const result = await h.call("user_brute_force_unlock", { realm: "shop", userId: "u1" });
+    const preview = await h.call("user_brute_force_unlock", { realm: "shop", userId: "u1" });
+    expect(preview.isError).toBe(true);
+    expect(textOf(preview)).toMatch(
+      /clear the brute-force lockout of user "locky" \(id u1, currently locked after 5 failed login\(s\)\).*confirm: true/s,
+    );
+    expect(h.kc.attackDetection.del).not.toHaveBeenCalled();
+    const result = await h.call("user_brute_force_unlock", {
+      realm: "shop",
+      userId: "u1",
+      confirm: true,
+    });
     expect(h.kc.attackDetection.del).toHaveBeenCalledWith({ realm: "shop", id: "u1" });
     expect(result.structuredContent).toEqual({ unlocked: true, userId: "u1", realm: "shop" });
   });

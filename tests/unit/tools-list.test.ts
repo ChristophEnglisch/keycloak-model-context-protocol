@@ -52,7 +52,7 @@ describe("tools/list", () => {
     });
     expect(byName.user_create?.annotations).toMatchObject({
       readOnlyHint: false,
-      destructiveHint: false,
+      destructiveHint: true,
       idempotentHint: false,
     });
     expect(byName.user_delete?.annotations).toMatchObject({
@@ -80,24 +80,25 @@ describe("tools/list", () => {
         idempotentHint: true,
       });
     }
+    // Sensitive writes are announced as destructive so clients ask before them.
     expect(ann("user_update")).toMatchObject({
       readOnlyHint: false,
-      destructiveHint: false,
+      destructiveHint: true,
       idempotentHint: true,
     });
     expect(ann("user_send_actions_email")).toMatchObject({
       readOnlyHint: false,
-      destructiveHint: false,
+      destructiveHint: true,
       idempotentHint: false,
     });
     expect(ann("user_group_add")).toMatchObject({
       readOnlyHint: false,
-      destructiveHint: false,
+      destructiveHint: true,
       idempotentHint: true,
     });
     expect(ann("user_role_assign")).toMatchObject({
       readOnlyHint: false,
-      destructiveHint: false,
+      destructiveHint: true,
       idempotentHint: true,
     });
     for (const name of ["user_group_remove", "user_role_revoke"]) {
@@ -109,7 +110,7 @@ describe("tools/list", () => {
     }
   });
 
-  it("adds an optional confirm parameter to destructive tools only", async () => {
+  it("adds an optional confirm parameter to every tool that changes data", async () => {
     h = await startHarness();
     const { tools } = await h.client.listTools();
     const schema = (name: string) =>
@@ -119,13 +120,11 @@ describe("tools/list", () => {
       };
     expect(schema("user_delete").properties).toHaveProperty("confirm");
     expect(schema("user_delete").required ?? []).not.toContain("confirm");
-    expect(schema("user_create").properties).not.toHaveProperty("confirm");
-    for (const name of ["user_group_remove", "user_role_revoke"]) {
-      expect(schema(name).properties).toHaveProperty("confirm");
+    for (const tool of tools) {
+      const hasConfirm = "confirm" in schema(tool.name).properties;
+      expect(hasConfirm, tool.name).toBe(tool.annotations?.readOnlyHint === false);
+      expect(schema(tool.name).required ?? [], tool.name).not.toContain("confirm");
     }
-    // user_role_assign has its own optional flag for privileged roles
-    expect(schema("user_role_assign").properties).toHaveProperty("confirm");
-    expect(schema("user_role_assign").required ?? []).not.toContain("confirm");
   });
 
   it("hides write tools in read-only mode", async () => {

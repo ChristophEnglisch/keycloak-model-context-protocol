@@ -12,9 +12,11 @@ export type FakeKc = { [R in keyof KcAdminClient]: MockedResource<KcAdminClient[
 
 /**
  * Fake admin client: `kc.<resource>.<method>` is created lazily as a `vi.fn()`
- * on first access, so new tools need no changes here.
+ * on first access, so new tools need no changes here. Plain properties such as
+ * `accessToken` can be set with setAccessToken().
  */
 export function createFakeKc(): FakeKc {
+  const values = new Map<PropertyKey, unknown>();
   const resources = new Map<PropertyKey, object>();
   const resource = () => {
     const methods = new Map<PropertyKey, Mock>();
@@ -34,8 +36,13 @@ export function createFakeKc(): FakeKc {
     );
   };
   return new Proxy({} as FakeKc, {
+    set(_target, name, value) {
+      values.set(name, value);
+      return true;
+    },
     get(_target, name) {
       if (name === "then") return undefined;
+      if (values.has(name)) return values.get(name);
       let r = resources.get(name);
       if (!r) {
         r = resource();
@@ -44,6 +51,11 @@ export function createFakeKc(): FakeKc {
       return r;
     },
   });
+}
+
+/** Sets the access token the fake client reports, e.g. one built with fakeJwt(). */
+export function setAccessToken(kc: FakeKc, token: string): void {
+  (kc as unknown as { accessToken: string }).accessToken = token;
 }
 
 export function createFakeGateway(kc: FakeKc = createFakeKc()): {

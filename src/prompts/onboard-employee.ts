@@ -45,7 +45,7 @@ Requested account (values supplied by the user):
 ${DATA_NOTICE}
 ${missingToolHint("a tool named below", "core (user tools), groups, roles")}
 
-Work step by step and always pass realm ${q(realm)} explicitly. Before EVERY step that changes something, summarize in one or two sentences what you are about to do and wait for the user's go-ahead for the first change; keep the user informed afterwards.
+Work step by step and always pass realm ${q(realm)} explicitly. Before EVERY step that changes something, summarize in one or two sentences what you are about to do. Tools that change something first return a preview and change nothing: show the preview to the user and repeat the call with confirm: true only after the user approved it.
 
 1. Duplicate check: call user_search with exact username and again with exact email. If a user already exists, stop and report it; do not create a second account.
 2. Create the user with user_create (username, email, firstName, lastName). Report the new user ID.

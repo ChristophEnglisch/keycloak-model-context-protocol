@@ -34,16 +34,24 @@ type ArgsBuilder = (f: Fixtures) => Promise<Record<string, unknown>> | Record<st
 
 const PREFIX = "mx";
 
-/** Arguments for one valid call of each tool (the ones with side effects get a fresh user). */
+/**
+ * Arguments for one valid call of each tool (the ones with side effects get a fresh user).
+ * Every tool that changes data needs `confirm: true`.
+ */
 const CASES: Record<string, ArgsBuilder> = {
   realm_get: () => ({ realm: REALM }),
   user_search: () => ({ realm: REALM, search: "alice" }),
   user_get: (f) => ({ realm: REALM, userId: f.aliceId }),
-  user_create: () => ({ realm: REALM, username: `${PREFIX}-${randomUUID().slice(0, 8)}` }),
+  user_create: () => ({
+    realm: REALM,
+    username: `${PREFIX}-${randomUUID().slice(0, 8)}`,
+    confirm: true,
+  }),
   user_update: async () => ({
     realm: REALM,
     userId: (await createUser(REALM, PREFIX)).id,
     firstName: "Changed",
+    confirm: true,
   }),
   user_delete: async () => ({
     realm: REALM,
@@ -56,6 +64,7 @@ const CASES: Record<string, ArgsBuilder> = {
     realm: REALM,
     userId: (await createUser(REALM, PREFIX)).id,
     groupId: f.groupId,
+    confirm: true,
   }),
   user_group_remove: async (f) => {
     const { id } = await createUser(REALM, PREFIX);
@@ -69,6 +78,7 @@ const CASES: Record<string, ArgsBuilder> = {
     realm: REALM,
     userId: (await createUser(REALM, PREFIX)).id,
     roles: ["editor"],
+    confirm: true,
   }),
   user_role_revoke: async () => {
     const { id } = await createUser(REALM, PREFIX);
@@ -92,7 +102,7 @@ const CASES: Record<string, ArgsBuilder> = {
   event_list: () => ({ realm: REALM, max: 1 }),
   admin_event_list: () => ({ realm: REALM, max: 1 }),
   user_brute_force_status: (f) => ({ realm: REALM, userId: f.aliceId }),
-  user_brute_force_unlock: (f) => ({ realm: REALM, userId: f.aliceId }),
+  user_brute_force_unlock: (f) => ({ realm: REALM, userId: f.aliceId, confirm: true }),
 };
 
 describeIt("role matrix against a real Keycloak", () => {

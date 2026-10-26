@@ -45,8 +45,16 @@ describeIt("realm isolation with parallel calls", () => {
 
   it("parallel writes of the same username land in the right realm only", async () => {
     const [a, b] = await Promise.all([
-      server.ok<{ id: string; realm: string }>("user_create", { realm: REALM, username: shared }),
-      server.ok<{ id: string; realm: string }>("user_create", { realm: REALM_B, username: shared }),
+      server.ok<{ id: string; realm: string }>("user_create", {
+        realm: REALM,
+        username: shared,
+        confirm: true,
+      }),
+      server.ok<{ id: string; realm: string }>("user_create", {
+        realm: REALM_B,
+        username: shared,
+        confirm: true,
+      }),
     ]);
     expect(a.realm).toBe(REALM);
     expect(b.realm).toBe(REALM_B);
