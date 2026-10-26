@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ConfigError, collectSecrets, loadConfig } from "../../src/config.js";
+import {
+  ConfigError,
+  collectSecrets,
+  isLoopbackHost,
+  loadConfig,
+  suggestVariable,
+} from "../../src/config.js";
 
 const base = { KEYCLOAK_URL: "http://localhost:8080" };
 
@@ -202,5 +208,155 @@ describe("loadConfig", () => {
     ]) {
       expect(warningsFor(url), url).toEqual([]);
     }
+  });
+});
+
+describe("loadConfig: unknown variables", () => {
+  const creds = { ...base, KEYCLOAK_CLIENT_ID: "c", KEYCLOAK_CLIENT_SECRET: "s" };
+
+  it.each([
+    ["KEYCLOAK_MCP_READONLY", "KEYCLOAK_MCP_READ_ONLY"],
+    ["KEYCLOAK_READ_ONLY", "KEYCLOAK_MCP_READ_ONLY"],
+    ["KEYCLOAK_MCP_REALM", "KEYCLOAK_MCP_REALMS"],
+    ["KEYCLOAK_MCP_TOOLSET", "KEYCLOAK_MCP_TOOLSETS"],
+    ["KEYCLOAK_MCP_ALLOW_MASTER_WRITES", "KEYCLOAK_MCP_ALLOW_MASTER_WRITE"],
+    ["KEYCLOAK_MCP_REQUIRE_CONFIRM", "KEYCLOAK_MCP_REQUIRE_CONFIRMATION"],
+    ["KEYCLOAK_CLIENTID", "KEYCLOAK_CLIENT_ID"],
+    ["KEYCLOAK_MCP_TIMEOUT", "KEYCLOAK_MCP_TIMEOUT_MS"],
+    ["KEYCLOAK_AUTHREALM", "KEYCLOAK_AUTH_REALM"],
+  ])("warns about %s and suggests %s", (name, suggestion) => {
+    const config = loadConfig({ ...creds, [name]: "true" });
+    expect(config.warnings).toEqual([
+      `Unknown variable ${name} is ignored; did you mean ${suggestion}?`,
+    ]);
+  });
+
+  it("warns without a suggestion when nothing is close", () => {
+    const config = loadConfig({ ...creds, KEYCLOAK_VERSION: "26.8" });
+    expect(config.warnings).toEqual([
+      "Unknown variable KEYCLOAK_VERSION is ignored; it is not a setting of this server.",
+    ]);
+  });
+
+  it("never prints the value of an unknown variable", () => {
+    const config = loadConfig({ ...creds, KEYCLOAK_CLIENT_SECRETT: "very-secret-value" });
+    expect(config.warnings.join()).not.toContain("very-secret-value");
+    expect(config.warnings.join()).toContain("did you mean KEYCLOAK_CLIENT_SECRET?");
+  });
+
+  it("ignores variables without the KEYCLOAK_ prefix and the known ones", () => {
+    const config = loadConfig({
+      ...creds,
+      KC_DB: "mysql",
+      KEYCLOAKX: "1",
+      PATH: "/bin",
+      KEYCLOAK_MCP_READ_ONLY: "false",
+    });
+    expect(config.warnings).toEqual([]);
+  });
+});
+
+describe("loadConfig: lists without entries", () => {
+  const creds = { ...base, KEYCLOAK_CLIENT_ID: "c", KEYCLOAK_CLIENT_SECRET: "s" };
+
+  it.each([",", " , ", ",,", " ,\t,"])("rejects KEYCLOAK_MCP_REALMS=%j", (value) => {
+    expect(() => loadConfig({ ...creds, KEYCLOAK_MCP_REALMS: value })).toThrow(
+      /KEYCLOAK_MCP_REALMS: contains no entries/,
+    );
+  });
+
+  it("rejects KEYCLOAK_MCP_TOOLSETS without entries", () => {
+    expect(() => loadConfig({ ...creds, KEYCLOAK_MCP_TOOLSETS: "," })).toThrow(
+      /KEYCLOAK_MCP_TOOLSETS: contains no entries/,
+    );
+  });
+
+  it.each(["", "   "])("treats the blank value %j as unset", (value) => {
+    const config = loadConfig({
+      ...creds,
+      KEYCLOAK_MCP_REALMS: value,
+      KEYCLOAK_MCP_TOOLSETS: value,
+    });
+    expect(config.allowedRealms).toEqual([]);
+    expect([...config.toolsets]).toEqual(["core", "groups", "roles"]);
+  });
+});
+
+describe("loadConfig: KEYCLOAK_URL", () => {
+  const creds = { KEYCLOAK_CLIENT_ID: "c", KEYCLOAK_CLIENT_SECRET: "s" };
+
+  it.each([
+    "https://user:p4ss-in-url@kc.example.com",
+    "https://user@kc.example.com",
+    "https://:p4ss-in-url@kc.example.com",
+    "http://admin:p4ss-in-url@localhost:8080/auth",
+  ])("rejects credentials in %s without echoing them", (url) => {
+    let error: unknown;
+    try {
+      loadConfig({ ...creds, KEYCLOAK_URL: url });
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(ConfigError);
+    const message = (error as Error).message;
+    expect(message).toMatch(/KEYCLOAK_URL: must not contain a user name or password/);
+    expect(message).not.toContain("p4ss-in-url");
+    expect(message).not.toContain("user@");
+  });
+
+  it.each([
+    "http://127.evil.example",
+    "http://127.0.0.1.nip.io:8080",
+    "http://127.corp.example",
+    "http://localhost.evil.com",
+    "http://0.0.0.0:8080",
+    "http://[::ffff:7f00:1]:8080",
+    "http://kc127.example.com",
+  ])("warns about plain http to the non-loopback host in %s", (url) => {
+    expect(loadConfig({ ...creds, KEYCLOAK_URL: url }).warnings.join()).toMatch(
+      /plain http:\/\/ for the remote host/,
+    );
+  });
+
+  it.each([
+    "http://127.0.0.1:8080",
+    "http://127.1.2.3",
+    "http://127.1",
+    "http://2130706433",
+    "http://[::1]:8080",
+    "http://[0:0:0:0:0:0:0:1]",
+    "http://localhost",
+    "http://LOCALHOST:8080",
+    "http://kc.localhost",
+  ])("treats %s as loopback", (url) => {
+    expect(loadConfig({ ...creds, KEYCLOAK_URL: url }).warnings).toEqual([]);
+  });
+
+  it.each([
+    ["127.0.0.1", true],
+    ["127.255.255.255", true],
+    ["128.0.0.1", false],
+    ["[::1]", true],
+    ["::1", true],
+    ["[::2]", false],
+    ["127.0.0.1.nip.io", false],
+    ["127.evil.example", false],
+    ["localhost", true],
+    ["a.localhost", true],
+    ["localhost.example", false],
+  ])("isLoopbackHost(%j) is %s", (host, expected) => {
+    expect(isLoopbackHost(host)).toBe(expected);
+  });
+});
+
+describe("suggestVariable", () => {
+  it.each([
+    ["KEYCLOAK_MCP_REALMS_ALLOWLIST", "KEYCLOAK_MCP_REALMS"],
+    ["KEYCLOAK_MCP_LOGLEVEL", "KEYCLOAK_MCP_LOG_LEVEL"],
+    ["KEYCLOAK_PASSWROD", "KEYCLOAK_PASSWORD"],
+    ["KEYCLOAK_HOME", undefined],
+    ["KEYCLOAK_X", undefined],
+  ])("%s -> %s", (name, expected) => {
+    expect(suggestVariable(name)).toBe(expected);
   });
 });

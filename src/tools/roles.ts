@@ -196,8 +196,12 @@ async function resolveRoles(
       clientUuid === undefined
         ? await kc.roles.findOneByName({ realm, name })
         : await kc.clients.findRole({ realm, id: clientUuid, roleName: name });
-    if (rep?.id) roles.push({ ...rep, id: rep.id, name });
-    else missing.push(name);
+    // Keep the name Keycloak returns: depending on the database collation it may
+    // resolve a differently spelled name, and the admin role check needs the real one.
+    if (!rep?.id) missing.push(name);
+    else if (!roles.some((r) => r.id === rep.id)) {
+      roles.push({ ...rep, id: rep.id, name: rep.name ?? name });
+    }
   }
   if (missing.length > 0) {
     const where =

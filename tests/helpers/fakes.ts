@@ -58,10 +58,18 @@ export function setAccessToken(kc: FakeKc, token: string): void {
   (kc as unknown as { accessToken: string }).accessToken = token;
 }
 
+/**
+ * Writes resolve their realm through `realms.findOne` first. By default every
+ * realm exists under exactly the name it is asked for (like a case-sensitive
+ * database), with the id `id-<name>`; override it to simulate other lookups.
+ */
 export function createFakeGateway(kc: FakeKc = createFakeKc()): {
   gateway: KeycloakGateway;
   kc: FakeKc;
 } {
+  kc.realms.findOne.mockImplementation(async (payload) =>
+    payload === undefined ? undefined : { id: `id-${payload.realm}`, realm: payload.realm },
+  );
   return {
     kc,
     gateway: { run: (fn) => fn(kc as unknown as KcAdminClient) },
