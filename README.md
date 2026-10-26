@@ -26,7 +26,7 @@ Your MCP client starts the server as a local child process and talks to it over 
 
 ### What a confirmed call looks like
 
-Every tool that changes data is *destructive* (it deletes or revokes) or *sensitive* (it changes identity, credentials, rights or protection mechanisms, for example `user_update` or `user_role_assign`). Called without `confirm: true`, such a tool only returns a preview of what would happen and changes nothing. After you approve, the assistant repeats the call with `confirm: true`.
+Every tool that changes data is _destructive_ (it deletes or revokes) or _sensitive_ (it changes identity, credentials, rights or protection mechanisms, for example `user_update` or `user_role_assign`). Called without `confirm: true`, such a tool only returns a preview of what would happen and changes nothing. After you approve, the assistant repeats the call with `confirm: true`.
 
 The model can set `confirm: true` itself, even on its first call. The server then still computes the preview and returns it with the result, but only your client's approval prompt proves that a human agreed. All these tools carry `destructiveHint`, so clients that ask before destructive calls ask here too.
 
@@ -108,15 +108,15 @@ Full reference with examples, validation rules and the tool-to-role matrix: [doc
 
 Tools are named `<domain>_<verb>`. Only the **default** toolsets are enabled unless you set `KEYCLOAK_MCP_TOOLSETS`. In read-only mode only tools of kind _read_ are registered.
 
-| Toolset    | Default | Tools                                                                                                                                                                        |
-| ---------- | :-----: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Toolset    | Default | Tools                                                                                                                                                                          |
+| ---------- | :-----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `core`     |   yes   | `realm_list`, `realm_get`, `user_search`, `user_get`, `user_create` (sensitive), `user_update` (sensitive), `user_delete` (destructive), `user_send_actions_email` (sensitive) |
-| `groups`   |   yes   | `group_list`, `group_members_list`, `user_group_add` (sensitive), `user_group_remove` (destructive)                                                                          |
-| `roles`    |   yes   | `role_list`, `user_roles_list`, `user_role_assign` (sensitive), `user_role_revoke` (destructive)                                                                             |
-| `clients`  |   no    | `client_list`, `client_get`                                                                                                                                                  |
-| `sessions` |   no    | `user_sessions_list`, `user_logout` (destructive)                                                                                                                            |
-| `events`   |   no    | `event_list`, `admin_event_list`                                                                                                                                             |
-| `security` |   no    | `user_brute_force_status`, `user_brute_force_unlock` (sensitive)                                                                                                             |
+| `groups`   |   yes   | `group_list`, `group_members_list`, `user_group_add` (sensitive), `user_group_remove` (destructive)                                                                            |
+| `roles`    |   yes   | `role_list`, `user_roles_list`, `user_role_assign` (sensitive), `user_role_revoke` (destructive)                                                                               |
+| `clients`  |   no    | `client_list`, `client_get`                                                                                                                                                    |
+| `sessions` |   no    | `user_sessions_list`, `user_logout` (destructive)                                                                                                                              |
+| `events`   |   no    | `event_list`, `admin_event_list`                                                                                                                                               |
+| `security` |   no    | `user_brute_force_status`, `user_brute_force_unlock` (sensitive)                                                                                                               |
 
 Details for every tool (parameters, outputs, required roles): [docs/tools-reference.md](docs/tools-reference.md).
 
