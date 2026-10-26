@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { segment } from "../../src/resources/shared.js";
 import { type Harness, startHarness } from "../helpers/harness.js";
 
 let h: Harness;
@@ -112,6 +113,15 @@ describe("resources", () => {
     expect(h.kc.users.findOne).not.toHaveBeenCalled();
   });
 
+  it("blocks a backslash in the user id without calling Keycloak", async () => {
+    // Unlike "..", a backslash survives URL parsing, so this reaches the segment guard.
+    h = await startHarness();
+    await expect(
+      h.client.readResource({ uri: "keycloak://realms/shop/users/a\\b" }),
+    ).rejects.toThrow();
+    expect(h.kc.users.findOne).not.toHaveBeenCalled();
+  });
+
   it("maps 404 and missing objects to clean errors", async () => {
     h = await startHarness();
     h.kc.realms.findOne.mockResolvedValue(undefined);
@@ -136,5 +146,16 @@ describe("resources", () => {
       argument: { name: "realm", value: "sh" },
     });
     expect(res.completion.values).toEqual(["shop"]);
+  });
+});
+
+describe("segment", () => {
+  it.each(["..", ".", "a/b", "a\\b", ""])("rejects %j", (value) => {
+    expect(() => segment(value, "userId")).toThrow(/Invalid userId/);
+  });
+
+  it("rejects a missing variable and takes the first of several values", () => {
+    expect(() => segment(undefined, "realm")).toThrow(/Invalid realm/);
+    expect(segment(["shop", "other"], "realm")).toBe("shop");
   });
 });

@@ -55,4 +55,28 @@ describe("mapKeycloakError", () => {
     const tool = new ToolError("guard", "nope");
     expect(mapKeycloakError(tool)).toBe(tool);
   });
+
+  it("does not echo the cause of a network failure", () => {
+    const error = new TypeError("fetch failed", {
+      cause: new Error("connect ECONNREFUSED 10.1.2.3:8443"),
+    });
+    const { message } = mapKeycloakError(error, { baseUrl: "http://kc" });
+    expect(message).not.toContain("10.1.2.3");
+    expect(message).not.toContain("ECONNREFUSED");
+  });
+
+  it("truncates string and object details to 300 characters", () => {
+    const long = `${"A".repeat(300)}TAIL`;
+    expect(mapKeycloakError(http(400, long)).message).not.toContain("TAIL");
+    expect(mapKeycloakError(http(400, { errorMessage: long })).message).not.toContain("TAIL");
+  });
+
+  it("does not dump unknown response bodies", () => {
+    const mapped = mapKeycloakError(http(400, { representation: { secret: "LEAK" } }));
+    expect(mapped.message).not.toContain("LEAK");
+  });
+
+  it("adds no server detail to a 401 from the admin API", () => {
+    expect(mapKeycloakError(http(401, { error: "LEAK401" })).message).not.toContain("LEAK401");
+  });
 });

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { isPrivilegedRole } from "../../src/tools/roles.js";
 import { type Harness, startHarness, textOf } from "../helpers/harness.js";
 
 let h: Harness;
@@ -26,6 +27,14 @@ describe("role_list", () => {
       max: 1,
       hasMore: true,
     });
+  });
+
+  it("does not return role attributes", async () => {
+    h = await startHarness();
+    h.kc.roles.find.mockResolvedValue([{ id: "r1", name: "editor", attributes: { k: ["v"] } }]);
+    const result = await h.call("role_list", { realm: "shop" });
+    expect(result.isError).toBeFalsy();
+    expect(JSON.stringify(result.structuredContent)).not.toContain("attributes");
   });
 
   it("resolves clientId to the internal id and lists client roles", async () => {
@@ -209,6 +218,29 @@ describe("user_role_assign", () => {
     expect(ok.isError).toBeFalsy();
   });
 
+  it("treats confirm: false like a missing confirmation for privileged roles", async () => {
+    h = await startHarness();
+    h.kc.roles.findOneByName.mockResolvedValue({ id: "r1", name: "admin" });
+    const result = await h.call("user_role_assign", {
+      realm: "shop",
+      userId: "u1",
+      roles: ["admin"],
+      confirm: false,
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toMatch(/administrative role.*confirm: true/s);
+    expect(h.kc.users.addRealmRoleMappings).not.toHaveBeenCalled();
+  });
+
+  it("rejects a dot segment as role name before any lookup", async () => {
+    h = await startHarness();
+    const result = await h.call("user_role_assign", { realm: "shop", userId: "u1", roles: [".."] });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toMatch(/Invalid role name/);
+    expect(h.kc.roles.findOneByName).not.toHaveBeenCalled();
+    expect(h.kc.users.addRealmRoleMappings).not.toHaveBeenCalled();
+  });
+
   it("does not require confirm for ordinary roles or when confirmation is disabled", async () => {
     h = await startHarness({ requireConfirmation: false });
     h.kc.roles.findOneByName.mockResolvedValue({ id: "r1", name: "admin" });
@@ -281,6 +313,22 @@ describe("user_role_revoke", () => {
     });
   });
 
+  it("rejects a dot segment as client role name even when confirmed", async () => {
+    h = await startHarness();
+    h.kc.clients.find.mockResolvedValue([{ id: "uuid-1", clientId: "web" }]);
+    const result = await h.call("user_role_revoke", {
+      realm: "shop",
+      userId: "u1",
+      roles: [".."],
+      clientId: "web",
+      confirm: true,
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toMatch(/Invalid role name/);
+    expect(h.kc.clients.findRole).not.toHaveBeenCalled();
+    expect(h.kc.users.delClientRoleMappings).not.toHaveBeenCalled();
+  });
+
   it("errors on unknown roles even when confirmed", async () => {
     h = await startHarness();
     h.kc.roles.findOneByName.mockResolvedValue(undefined);
@@ -292,5 +340,18 @@ describe("user_role_revoke", () => {
     });
     expect(textOf(result)).toMatch(/Unknown role/);
     expect(h.kc.users.delRealmRoleMappings).not.toHaveBeenCalled();
+  });
+});
+
+describe("isPrivilegedRole", () => {
+  it.each([
+    "manage-users",
+    "manage-realm",
+    "manage-clients",
+    "manage-events",
+    "manage-authorization",
+    "manage-identity-providers",
+  ])("treats %s of any client as privileged", (name) => {
+    expect(isPrivilegedRole(name, "some-client")).toBe(true);
   });
 });

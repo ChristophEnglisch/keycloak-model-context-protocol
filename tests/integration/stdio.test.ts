@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
@@ -102,5 +103,44 @@ describeIt("real binary over stdio against a real Keycloak", () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(stderr).toContain("tool_call");
     expect(stderr).not.toContain(CLIENTS.service.secret);
+  });
+});
+
+// Needs no reachable Keycloak, only dist/index.js, which globalSetup builds.
+describeIt("real binary startup log", () => {
+  it("masks the client secret in the startup line", async () => {
+    // The startup line logs the auth realm, so using the secret as realm name forces it into the log.
+    const secret = "stdio-secret-in-startup-line";
+    const child = spawn(process.execPath, [entry], {
+      env: {
+        PATH: process.env.PATH ?? "",
+        KEYCLOAK_URL: "http://127.0.0.1:9",
+        KEYCLOAK_CLIENT_ID: "startup-check",
+        KEYCLOAK_CLIENT_SECRET: secret,
+        KEYCLOAK_AUTH_REALM: secret,
+      },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stderr = "";
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`no startup line: ${stderr}`)), 10_000);
+        child.stderr.on("data", (chunk) => {
+          stderr += String(chunk);
+          if (stderr.includes("started")) {
+            clearTimeout(timer);
+            resolve();
+          }
+        });
+        child.on("exit", (code) => {
+          clearTimeout(timer);
+          reject(new Error(`exited with ${code}: ${stderr}`));
+        });
+      });
+    } finally {
+      child.kill("SIGTERM");
+    }
+    expect(stderr).toContain('"authRealm":"***"');
+    expect(stderr).not.toContain(secret);
   });
 });

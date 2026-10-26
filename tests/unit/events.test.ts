@@ -48,6 +48,26 @@ describe("event_list", () => {
     expect(JSON.stringify(result)).not.toMatch(/RT-SECRET|AUTHCODE/);
   });
 
+  it("drops secret, password and credential details regardless of case", async () => {
+    h = await start();
+    h.kc.realms.findEvents.mockResolvedValue([
+      {
+        type: "UPDATE_PASSWORD",
+        details: {
+          client_secret: "D1",
+          new_password: "D2",
+          credential_value: "D3",
+          Token_X: "D4",
+          ok: "fine",
+        },
+      },
+    ]);
+    const result = await h.call("event_list", { realm: "shop" });
+    const s = JSON.stringify(result.structuredContent);
+    for (const v of ["D1", "D2", "D3", "D4"]) expect(s).not.toContain(v);
+    expect(s).toContain("fine");
+  });
+
   it("hints at disabled events when the list is empty", async () => {
     h = await start();
     h.kc.realms.findEvents.mockResolvedValue([]);

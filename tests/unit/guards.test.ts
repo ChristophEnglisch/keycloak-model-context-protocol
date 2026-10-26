@@ -17,6 +17,18 @@ describe("assertPathSegment", () => {
   it.each(["shop", "my realm", "a.b", "user-1234-uuid"])("accepts %j", (value) => {
     expect(() => assertPathSegment(value)).not.toThrow();
   });
+
+  it("accepts 255 characters and rejects 256", () => {
+    expect(() => assertPathSegment("x".repeat(255))).not.toThrow();
+    expect(() => assertPathSegment("x".repeat(256))).toThrow(ToolError);
+  });
+
+  it.each(["a\tb", "\u000b", "a\rb", "a\u001bb", "a\u001fb", "a\u007fb"])(
+    "rejects the control character in %j",
+    (value) => {
+      expect(() => assertPathSegment(value)).toThrow(ToolError);
+    },
+  );
 });
 
 describe("assertRealmAllowed", () => {

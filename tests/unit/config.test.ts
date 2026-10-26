@@ -127,6 +127,27 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...creds, KEYCLOAK_MCP_TOOLSETS: "core,bogus" })).toThrow(/bogus/);
   });
 
+  it("expands only the exact word 'all'", () => {
+    const creds = { ...base, KEYCLOAK_CLIENT_ID: "c", KEYCLOAK_CLIENT_SECRET: "s" };
+    expect(() => loadConfig({ ...creds, KEYCLOAK_MCP_TOOLSETS: "alpha" })).toThrow(/alpha/);
+  });
+
+  it("keeps the case of KEYCLOAK_MCP_REALMS entries", () => {
+    const config = loadConfig({
+      ...base,
+      KEYCLOAK_CLIENT_ID: "c",
+      KEYCLOAK_CLIENT_SECRET: "s",
+      KEYCLOAK_MCP_REALMS: "Shop",
+    });
+    expect(config.allowedRealms).toEqual(["Shop"]);
+  });
+
+  it("names the missing client secret for an explicit client_credentials grant", () => {
+    expect(() =>
+      loadConfig({ ...base, KEYCLOAK_GRANT_TYPE: "client_credentials", KEYCLOAK_CLIENT_ID: "c" }),
+    ).toThrow(/KEYCLOAK_CLIENT_SECRET/);
+  });
+
   it("rejects invalid values and never echoes secrets", () => {
     const creds = { ...base, KEYCLOAK_CLIENT_ID: "c", KEYCLOAK_CLIENT_SECRET: "topsecret" };
     expect(() => loadConfig({ ...creds, KEYCLOAK_MCP_TIMEOUT_MS: "abc" })).toThrow(/TIMEOUT_MS/);
@@ -145,10 +166,33 @@ describe("loadConfig", () => {
     expect(collectSecrets(config)).toEqual(["pw"]);
   });
 
+  it("collects the client secret for masking", () => {
+    const service = loadConfig({
+      ...base,
+      KEYCLOAK_CLIENT_ID: "c",
+      KEYCLOAK_CLIENT_SECRET: "cs-xyz",
+    });
+    expect(collectSecrets(service)).toEqual(["cs-xyz"]);
+    const password = loadConfig({
+      ...base,
+      KEYCLOAK_GRANT_TYPE: "password",
+      KEYCLOAK_USERNAME: "u",
+      KEYCLOAK_PASSWORD: "pw",
+      KEYCLOAK_CLIENT_SECRET: "cs2",
+    });
+    expect(collectSecrets(password).sort()).toEqual(["cs2", "pw"]);
+  });
+
   it("warns about plain http:// for remote hosts only", () => {
     const creds = { KEYCLOAK_CLIENT_ID: "mcp", KEYCLOAK_CLIENT_SECRET: "s" };
     const warningsFor = (url: string) => loadConfig({ KEYCLOAK_URL: url, ...creds }).warnings;
-    expect(warningsFor("http://keycloak.example.com").join()).toMatch(/plain http:\/\//);
+    for (const url of [
+      "http://keycloak.example.com",
+      "http://kc127.example.com",
+      "http://[2001:db8::1]:8080",
+    ]) {
+      expect(warningsFor(url).join(), url).toMatch(/plain http:\/\//);
+    }
     for (const url of [
       "https://keycloak.example.com",
       "http://localhost:8080",

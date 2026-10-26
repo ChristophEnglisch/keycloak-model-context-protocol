@@ -67,6 +67,16 @@ describe("user_search", () => {
     expect(h.kc.users.find).not.toHaveBeenCalled();
   });
 
+  it.each(["Shop", "SHOP", "shop2", "shop-b", "sho"])(
+    "matches the allowlist exactly and denies %j",
+    async (realm) => {
+      h = await startHarness({ allowedRealms: ["shop"] });
+      const result = await h.call("user_search", { realm });
+      expect(result.isError).toBe(true);
+      expect(h.kc.users.find).not.toHaveBeenCalled();
+    },
+  );
+
   it("maps a 404 to a readable error", async () => {
     h = await startHarness();
     h.kc.users.find.mockRejectedValue(
@@ -153,6 +163,15 @@ describe("user_delete", () => {
     expect(h.kc.users.del).not.toHaveBeenCalled();
   });
 
+  it("treats confirm: false like a missing confirmation", async () => {
+    h = await startHarness();
+    h.kc.users.findOne.mockResolvedValue({ id: "u1", username: "bob" });
+    const result = await h.call("user_delete", { realm: "shop", userId: "u1", confirm: false });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toMatch(/Confirmation required/);
+    expect(h.kc.users.del).not.toHaveBeenCalled();
+  });
+
   it("deletes with confirm: true", async () => {
     h = await startHarness();
     h.kc.users.del.mockResolvedValue(undefined);
@@ -213,6 +232,28 @@ describe("user_get", () => {
       totp: false,
     });
     expect(JSON.stringify(result)).not.toMatch(/attributes|credentials/);
+  });
+
+  it("returns only allowlisted keys of a full representation", async () => {
+    h = await startHarness();
+    h.kc.users.findOne.mockResolvedValue({
+      id: "u1",
+      username: "bob",
+      access: { manage: true },
+      notBefore: 1,
+      attributes: { a: ["x"] },
+      credentials: [{ value: "pw" }],
+      federatedIdentities: [{ userId: "x" }],
+      serviceAccountClientId: "c",
+      realmRoles: ["admin"],
+      clientRoles: { c: ["r"] },
+      groups: ["/g"],
+      self: "s",
+      disableableCredentialTypes: ["otp"],
+      clientConsents: [{}],
+    });
+    const result = await h.call("user_get", { realm: "shop", userId: "u1" });
+    expect(Object.keys(result.structuredContent ?? {}).sort()).toEqual(["id", "username"]);
   });
 
   it("returns isError for an unknown user and honours the allowlist", async () => {
