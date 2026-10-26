@@ -450,6 +450,71 @@ describe("effective administrative rights", () => {
     );
     expect(text).toContain('administrative rights: "admin" via group "/admins"');
   });
+
+  describe("changes to an administrative account with KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false", () => {
+    const TARGET_TOOLS = [
+      [
+        "user_update",
+        { realm: "shop", userId: "u1", email: "new@x.io" },
+        (kc: FakeKc) => kc.users.update,
+      ],
+      [
+        "user_send_actions_email",
+        { realm: "shop", userId: "u1", actions: ["UPDATE_PASSWORD"] },
+        (kc: FakeKc) => kc.users.executeActionsEmail,
+      ],
+    ] as const;
+
+    it.each(TARGET_TOOLS)(
+      "%s still needs confirm for an admin target",
+      async (tool, args, write) => {
+        h = await start({ requireConfirmation: false });
+        happyPath(h.kc);
+        h.kc.users.listRoleMappings.mockResolvedValue({
+          realmMappings: [{ id: "x", name: "admin" }],
+        });
+        const result = await h.call(tool, args);
+        expect(result.isError).toBe(true);
+        expect(textOf(result)).toMatch(/^Confirmation required\./);
+        expect(textOf(result)).toContain('The target account has administrative rights: "admin".');
+        expect(textOf(result)).toMatch(/cannot be turned off/);
+        expect(write(h.kc)).not.toHaveBeenCalled();
+
+        const confirmed = await h.call(tool, { ...args, confirm: true });
+        expect(confirmed.isError, textOf(confirmed)).toBeFalsy();
+        expect(write(h.kc)).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it.each(TARGET_TOOLS)(
+      "%s still needs confirm when admin rights cannot be checked",
+      async (tool, args, write) => {
+        h = await start({ requireConfirmation: false });
+        happyPath(h.kc);
+        h.kc.clients.find.mockRejectedValue(forbidden());
+        const result = await h.call(tool, args);
+        expect(result.isError).toBe(true);
+        expect(textOf(result)).toMatch(/^Confirmation required\./);
+        expect(textOf(result)).toMatch(
+          /could not be checked.*view-clients.*administrative account/s,
+        );
+        expect(write(h.kc)).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(TARGET_TOOLS)(
+      "%s runs without confirm for an ordinary target",
+      async (tool, args, write) => {
+        h = await start({ requireConfirmation: false });
+        happyPath(h.kc);
+        const result = await h.call(tool, args);
+        expect(result.isError, textOf(result)).toBeFalsy();
+        expect(textOf(result)).toMatch(/Ran without confirmation/);
+        expect(textOf(result)).not.toMatch(/administrative/);
+        expect(write(h.kc)).toHaveBeenCalledTimes(1);
+      },
+    );
+  });
 });
 
 describe("the server's own account", () => {

@@ -5,7 +5,7 @@ import {
   assertNotOwnAccount,
   ownAccountPreview,
   requireUser,
-  targetRightsNote,
+  targetPreview,
 } from "./privileges.js";
 import { defineTool, pageOf, paginationShape, quoted, realmField, toPage } from "./shared.js";
 
@@ -255,7 +255,7 @@ const userUpdate = defineTool({
   name: "user_update",
   title: "Update user",
   description:
-    "Update selected fields of a user (partial update; only the given fields are sent, everything else stays unchanged). At least one field besides realm and userId is required. Setting `requiredActions` replaces the existing list. Changing `email` marks the address as unverified unless `emailVerified` is given. Requires confirm: true after the user approved the preview, which names the old and new values and whether the account has administrative rights. The account this server signs in with cannot be changed.",
+    "Update selected fields of a user (partial update; only the given fields are sent, everything else stays unchanged). At least one field besides realm and userId is required. Setting `requiredActions` replaces the existing list. Changing `email` marks the address as unverified unless `emailVerified` is given. Requires confirm: true after the user approved the preview, which names the old and new values and whether the account has administrative rights; for such accounts the confirmation cannot be turned off. The account this server signs in with cannot be changed.",
   kind: "sensitive",
   idempotent: true,
   input: z.object({
@@ -293,7 +293,10 @@ const userUpdate = defineTool({
           `${key} ${previewValue((current as Record<string, unknown>)[key])} -> ${previewValue(value)}`,
       );
       const rights = await adminRightsOfUser(kc, realm, userId);
-      return `update user ${quoted(current.username ?? userId)} (id ${userId}) in realm '${realm}': ${fields.join(", ")}.${targetRightsNote(rights)}`;
+      return targetPreview(
+        `update user ${quoted(current.username ?? userId)} (id ${userId}) in realm '${realm}': ${fields.join(", ")}.`,
+        rights,
+      );
     });
   },
   async handler({ realm, userId, ...changes }, { gateway }) {
@@ -318,7 +321,7 @@ const userSendActionsEmail = defineTool({
   name: "user_send_actions_email",
   title: "Send required-actions e-mail",
   description:
-    "Send the user an e-mail with a link to perform required actions (e.g. update password, verify e-mail). Whoever controls the e-mail address can use the link, so this requires confirm: true after the user approved the preview, which names the recipient address. Each call sends another e-mail. Requires SMTP to be configured in the realm and the user to have an e-mail address. The account this server signs in with cannot be targeted.",
+    "Send the user an e-mail with a link to perform required actions (e.g. update password, verify e-mail). Whoever controls the e-mail address can use the link, so this requires confirm: true after the user approved the preview, which names the recipient address and whether the account has administrative rights; for such accounts the confirmation cannot be turned off. Each call sends another e-mail. Requires SMTP to be configured in the realm and the user to have an e-mail address. The account this server signs in with cannot be targeted.",
   kind: "sensitive",
   idempotent: false,
   input: z.object({
@@ -379,7 +382,10 @@ const userSendActionsEmail = defineTool({
           ? ""
           : `, redirecting to ${quoted(redirectUri)} afterwards (client ${quoted(clientId ?? "")})`;
       const rights = await adminRightsOfUser(kc, realm, userId);
-      return `send an e-mail to ${recipient} asking user ${quoted(user.username ?? userId)} (id ${userId}) in realm '${realm}' to perform ${actions.join(", ")}, with ${validity}${redirect}.${targetRightsNote(rights)}`;
+      return targetPreview(
+        `send an e-mail to ${recipient} asking user ${quoted(user.username ?? userId)} (id ${userId}) in realm '${realm}' to perform ${actions.join(", ")}, with ${validity}${redirect}.`,
+        rights,
+      );
     });
   },
   async handler({ realm, userId, actions, lifespan, clientId, redirectUri }, { gateway }) {

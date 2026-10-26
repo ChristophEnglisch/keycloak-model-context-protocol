@@ -39,7 +39,7 @@ Out of scope: vulnerabilities in Keycloak itself, in the MCP SDK or other depend
   - `KEYCLOAK_MCP_READ_ONLY=true` registers read-only tools only.
   - `KEYCLOAK_MCP_REALMS` limits which realms may be targeted.
   - Writes in `master` are off unless `KEYCLOAK_MCP_ALLOW_MASTER_WRITE=true`.
-  - Destructive and sensitive tools (every tool that changes data) require confirmation (`KEYCLOAK_MCP_REQUIRE_CONFIRMATION`, default `true`). Grants of administrative rights and changes to the server's own account always do.
+  - Destructive and sensitive tools (every tool that changes data) require confirmation (`KEYCLOAK_MCP_REQUIRE_CONFIRMATION`, default `true`). Grants of administrative rights, profile changes and action e-mails for administrative accounts, and changes to the server's own account always do.
   - Enable only the toolsets you need (`KEYCLOAK_MCP_TOOLSETS`).
 - Prompt injection: data stored in Keycloak (names, attributes, descriptions) is untrusted input and may contain instructions aimed at the LLM. Keycloak data is returned as structured content, but the MCP client and model remain responsible for not following it. Keep a human in the loop for write operations and try the server against a test realm first.
 - Secrets are read from environment variables only and must not appear in logs or tool output. Do not commit `.env` files.

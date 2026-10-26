@@ -181,7 +181,7 @@ Confirmation required. This would: permanently delete user "<username>" (id <id>
 
 **Cause.** Every tool that changes data is destructive (`user_delete`, `user_group_remove`, `user_role_revoke`, `user_logout`) or sensitive (`user_create`, `user_update`, `user_send_actions_email`, `user_group_add`, `user_role_assign`, `user_brute_force_unlock`). By default they only show a preview.
 
-**Fix.** This is the expected flow. Ask the human, then repeat the call with `confirm: true`. If a model sets `confirm: true` without asking, tighten your client's approval settings. `KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false` removes the preview step; do not do that for interactive use. If the message ends with "This confirmation cannot be turned off.", the call grants administrative rights or targets the server's own account, and the setting does not apply.
+**Fix.** This is the expected flow. Ask the human, then repeat the call with `confirm: true`. If a model sets `confirm: true` without asking, tighten your client's approval settings. `KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false` removes the preview step; do not do that for interactive use. If the message ends with "This confirmation cannot be turned off.", the call grants administrative rights, changes the profile of or sends action e-mails to an account with administrative rights, or targets the server's own account, and the setting does not apply.
 
 ## Refusing to change the server's own account
 

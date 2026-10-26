@@ -320,15 +320,24 @@ export function grantPreview(text: string, rights: AdminRights): PreviewResult {
   return text;
 }
 
-/** Sentence for previews of changes to an existing account. */
-export function targetRightsNote(rights: AdminRights): string {
+/**
+ * Preview of a change to an existing account. When the target has administrative
+ * rights, or they cannot be ruled out, the confirmation cannot be turned off.
+ */
+export function targetPreview(text: string, rights: AdminRights): PreviewResult {
   if (rights.grants.length > 0) {
-    return ` The target account has administrative rights: ${describeGrants(rights.grants)}.`;
+    return {
+      text: `${text} The target account has administrative rights: ${describeGrants(rights.grants)}.`,
+      unconditional: true,
+    };
   }
   if (!rights.verified) {
-    return ` Whether the target account has administrative rights could not be checked: ${VIEW_CLIENTS_HINT}.`;
+    return {
+      text: `${text} Whether the target account has administrative rights could not be checked: ${VIEW_CLIENTS_HINT}. Treat it as an administrative account.`,
+      unconditional: true,
+    };
   }
-  return "";
+  return text;
 }
 
 // ---------------------------------------------------------------------------

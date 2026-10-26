@@ -214,7 +214,7 @@ function render({ tools, prompts, resources, templates, toolsets }) {
     "",
     "- Every tool takes the target `realm` explicitly. It is the realm to operate on, not the realm used for login.",
     "- Every tool that changes data is *sensitive* (it changes identity, credentials, rights or protection mechanisms) or *destructive* (it deletes or revokes). Both kinds carry `destructiveHint=true` and take an additional optional `confirm` parameter. A call without `confirm: true` only returns a preview and changes nothing; call again with `confirm: true` after the user approved. The model can set `confirm: true` itself, even on the first call: the server then still computes the preview and returns it with the result, but only the client's approval prompt proves that a human agreed.",
-    "- `KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false` turns the confirmation off, except for grants of administrative rights (also through composite roles and groups) and changes to the account the server signs in with. For that account, role and group grants, `user_update` and `user_send_actions_email` are refused.",
+    "- `KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false` turns the confirmation off, except for grants of administrative rights (also through composite roles and groups), `user_update` and `user_send_actions_email` for accounts with administrative rights, and changes to the account the server signs in with. For that account, role and group grants, `user_update` and `user_send_actions_email` are refused.",
     "- List tools are paginated with `first` and `max` and return `{ items, first, max, hasMore }`.",
     "- Results carry a short neutral summary in `content` and the data in `structuredContent`. Errors are returned with `isError: true`.",
     "",

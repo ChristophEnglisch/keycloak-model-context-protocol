@@ -53,7 +53,7 @@ Boolean values accept `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off` (case-inse
 | `KEYCLOAK_MCP_READ_ONLY` | no | `false` | no | Register only tools of kind *read*. Write and destructive tools do not exist for the client. | `true` |
 | `KEYCLOAK_MCP_REALMS` | no | empty (all realms) | no | Comma-separated allowlist of target realms. Applies to tools, resources, prompts and completions. | `demo,staging` |
 | `KEYCLOAK_MCP_ALLOW_MASTER_WRITE` | no | `false` | no | Allow write and destructive tools in the `master` realm. | `false` |
-| `KEYCLOAK_MCP_REQUIRE_CONFIRMATION` | no | `true` | no | Destructive and sensitive tools require `confirm: true`. `false` turns this off, except for grants of administrative rights and changes to the server's own account. | `true` |
+| `KEYCLOAK_MCP_REQUIRE_CONFIRMATION` | no | `true` | no | Destructive and sensitive tools require `confirm: true`. `false` turns this off, except for grants of administrative rights, profile changes and action e-mails for accounts with administrative rights, and changes to the server's own account. | `true` |
 | `KEYCLOAK_MCP_TIMEOUT_MS` | no | `30000` | no | HTTP timeout for requests to Keycloak, in milliseconds (integer, at least 1). | `15000` |
 | `KEYCLOAK_MCP_LOG_LEVEL` | no | `info` | no | `debug`, `info`, `warn` or `error`. Logs go to stderr. | `warn` |
 
@@ -132,11 +132,11 @@ Prompts that need tools from a non-default toolset (`audit_realm_security`, `inv
 | **Read-only** (`KEYCLOAK_MCP_READ_ONLY=true`) | Only tools of kind *read* are registered; the 10 write and destructive tools never appear in `tools/list`. This is the strongest control and independent of Keycloak roles. |
 | **Realm allowlist** (`KEYCLOAK_MCP_REALMS`) | Calls for a realm outside the list are rejected before any request is sent. `realm_list`, the `keycloak://realms` resource and prompt completion only show allowed realms. Empty means every realm. |
 | **`master` write protection** (`KEYCLOAK_MCP_ALLOW_MASTER_WRITE=false`) | Write and destructive tools reject the realm `master` (case-insensitive). Reads still work. Set to `true` only if you really administer `master` through the assistant. |
-| **Confirmation** (`KEYCLOAK_MCP_REQUIRE_CONFIRMATION=true`) | Destructive tools (`user_delete`, `user_group_remove`, `user_role_revoke`, `user_logout`) and sensitive tools (`user_create`, `user_update`, `user_send_actions_email`, `user_group_add`, `user_role_assign`, `user_brute_force_unlock`) first return a preview and change nothing; the assistant must repeat the call with `confirm: true` after you approved. Grants of administrative rights, also through composite roles and parent groups, and changes to the server's own account always need confirmation; see [security](security.md#sensitive-writes). |
+| **Confirmation** (`KEYCLOAK_MCP_REQUIRE_CONFIRMATION=true`) | Destructive tools (`user_delete`, `user_group_remove`, `user_role_revoke`, `user_logout`) and sensitive tools (`user_create`, `user_update`, `user_send_actions_email`, `user_group_add`, `user_role_assign`, `user_brute_force_unlock`) first return a preview and change nothing; the assistant must repeat the call with `confirm: true` after you approved. Grants of administrative rights, also through composite roles and parent groups, `user_update` and `user_send_actions_email` for accounts with administrative rights, and changes to the server's own account always need confirmation; see [security](security.md#sensitive-writes). |
 | **Path-segment validation** | Realm names and IDs containing `/`, `\`, `..` or control characters are rejected, so arguments cannot redirect a request to another API path. |
 
 > [!WARNING]
-> `KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false` removes the preview step for ordinary changes. Your MCP client may still ask you to approve each tool call, but the server will no longer enforce it. Grants of administrative rights and changes to the server's own account still need `confirm: true`. Keep the default unless you run unattended automation in a disposable environment.
+> `KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false` removes the preview step for ordinary changes. Your MCP client may still ask you to approve each tool call, but the server will no longer enforce it. Grants of administrative rights, profile changes and action e-mails for accounts with administrative rights, and changes to the server's own account still need `confirm: true`. Keep the default unless you run unattended automation in a disposable environment.
 
 ## Timeouts and logging
 
@@ -211,7 +211,7 @@ Joiner/mover/leaver work: create and change users, memberships and roles, end se
 | `KEYCLOAK_MCP_REQUIRE_CONFIRMATION` | `true` (default) |
 | `KEYCLOAK_MCP_REALMS` | the realm(s) you administer |
 
-`manage-users` already lets the account assign roles, including powerful ones, and change any user of the realm, including administrators. The server resolves composite roles and groups and always asks for confirmation before granting administrative rights, and it refuses to extend its own account. Add `view-clients` if the server should rule out administrative rights in composite roles and groups precisely; without it, such grants are treated as administrative. The real protection is still not giving the service account roles you would not want it to hand out.
+`manage-users` already lets the account assign roles, including powerful ones, and change any user of the realm, including administrators. The server resolves composite roles and groups and always asks for confirmation before granting administrative rights or changing the profile or sending action e-mails for an account with administrative rights, and it refuses to extend its own account. Add `view-clients` if the server should rule out administrative rights in composite roles and groups precisely; without it, such grants and target accounts are treated as administrative, so every `user_update` and `user_send_actions_email` needs confirmation. The real protection is still not giving the service account roles you would not want it to hand out.
 
 ### Auditor
 

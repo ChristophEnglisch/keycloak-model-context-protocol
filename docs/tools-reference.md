@@ -14,7 +14,7 @@ Conventions:
 
 - Every tool takes the target `realm` explicitly. It is the realm to operate on, not the realm used for login.
 - Every tool that changes data is *sensitive* (it changes identity, credentials, rights or protection mechanisms) or *destructive* (it deletes or revokes). Both kinds carry `destructiveHint=true` and take an additional optional `confirm` parameter. A call without `confirm: true` only returns a preview and changes nothing; call again with `confirm: true` after the user approved. The model can set `confirm: true` itself, even on the first call: the server then still computes the preview and returns it with the result, but only the client's approval prompt proves that a human agreed.
-- `KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false` turns the confirmation off, except for grants of administrative rights (also through composite roles and groups) and changes to the account the server signs in with. For that account, role and group grants, `user_update` and `user_send_actions_email` are refused.
+- `KEYCLOAK_MCP_REQUIRE_CONFIRMATION=false` turns the confirmation off, except for grants of administrative rights (also through composite roles and groups), `user_update` and `user_send_actions_email` for accounts with administrative rights, and changes to the account the server signs in with. For that account, role and group grants, `user_update` and `user_send_actions_email` are refused.
 - List tools are paginated with `first` and `max` and return `{ items, first, max, hasMore }`.
 - Results carry a short neutral summary in `content` and the data in `structuredContent`. Errors are returned with `isError: true`.
 
@@ -225,7 +225,7 @@ Annotations: `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=false
 
 **sensitive · idempotent · requires `confirm: true`**
 
-Update selected fields of a user (partial update; only the given fields are sent, everything else stays unchanged). At least one field besides realm and userId is required. Setting `requiredActions` replaces the existing list. Changing `email` marks the address as unverified unless `emailVerified` is given. Requires confirm: true after the user approved the preview, which names the old and new values and whether the account has administrative rights. The account this server signs in with cannot be changed.
+Update selected fields of a user (partial update; only the given fields are sent, everything else stays unchanged). At least one field besides realm and userId is required. Setting `requiredActions` replaces the existing list. Changing `email` marks the address as unverified unless `emailVerified` is given. Requires confirm: true after the user approved the preview, which names the old and new values and whether the account has administrative rights; for such accounts the confirmation cannot be turned off. The account this server signs in with cannot be changed.
 
 Annotations: `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=true`, `openWorldHint=false`
 
@@ -283,7 +283,7 @@ Annotations: `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=true`
 
 **sensitive · not idempotent · requires `confirm: true`**
 
-Send the user an e-mail with a link to perform required actions (e.g. update password, verify e-mail). Whoever controls the e-mail address can use the link, so this requires confirm: true after the user approved the preview, which names the recipient address. Each call sends another e-mail. Requires SMTP to be configured in the realm and the user to have an e-mail address. The account this server signs in with cannot be targeted.
+Send the user an e-mail with a link to perform required actions (e.g. update password, verify e-mail). Whoever controls the e-mail address can use the link, so this requires confirm: true after the user approved the preview, which names the recipient address and whether the account has administrative rights; for such accounts the confirmation cannot be turned off. Each call sends another e-mail. Requires SMTP to be configured in the realm and the user to have an e-mail address. The account this server signs in with cannot be targeted.
 
 Annotations: `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=false`, `openWorldHint=false`
 
